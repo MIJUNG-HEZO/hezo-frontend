@@ -2,21 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getUserState, getRedirectPath, type UserState } from "@/lib/auth-guard";
+import { isAuthenticated } from "@/lib/auth-guard";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [state, setState] = useState<UserState | null>(null);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const userState = getUserState();
-    setState(userState);
+    // 인증 페이지는 가드 스킵
+    if (pathname.startsWith("/auth/")) {
+      setChecked(true);
+      return;
+    }
 
-    const redirect = getRedirectPath(userState, pathname);
-    if (redirect) {
-      router.replace(redirect);
+    if (!isAuthenticated()) {
+      router.replace("/auth/login");
     } else {
       setChecked(true);
     }

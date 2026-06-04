@@ -6,8 +6,8 @@ import ChatModal from "@/components/chat/ChatModal";
 import PricingModal from "@/components/chat/PricingModal";
 import AgreementModal from "@/components/chat/AgreementModal";
 import OnboardingDashboard from "@/components/dashboard/OnboardingDashboard";
-import { getUserState } from "@/lib/auth-guard";
-import { api } from "@/lib/api";
+import { api, getSubscriptionStatus } from "@/lib/api";
+import { isAuthenticated } from "@/lib/auth-guard";
 
 export default function DashboardPage() {
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -15,47 +15,85 @@ export default function DashboardPage() {
   const [isAgreementOpen, setIsAgreementOpen] = useState(false);
   const [agreementLoading, setAgreementLoading] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
-  const [hasSite, setHasSite] = useState(true);
+  const [hasSite, setHasSite] = useState<boolean | null>(null); // null = loading
+  const [userPlan, setUserPlan] = useState<"starter" | "pro" | "enterprise">("starter");
+  const [sitesUsed, setSitesUsed] = useState(0);
+  const [sitesLimit, setSitesLimit] = useState(0);
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    setHasSite(getUserState() === "logged_in_has_site");
-    if (searchParams.get("chat") === "open") {
+    if (!isAuthenticated()) return;
+
+    // API에서 발급된(published) 사이트 유무 확인
+    api.get("api/v1/sites").json<{ id: string; status: string }[]>()
+      .then((sites) => setHasSite(sites.some((s) => s.status === "published")))
+      .catch(() => setHasSite(false));
+
+    // 구독 상태 가져오기
+    getSubscriptionStatus()
+      .then((status) => {
+        setUserPlan(status.plan);
+        setSitesUsed(status.sites_used);
+        setSitesLimit(status.sites_limit);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (hasSite !== null && searchParams.get("chat") === "open") {
       handleNewSite();
     }
-  }, [searchParams]);
+  }, [searchParams, hasSite]);
 
   const handleNewSite = () => {
-    if (hasSite) {
+    // 한도 체크: starter이거나 한도에 도달했으면 업그레이드 모달
+    if (userPlan === "starter" || sitesUsed >= sitesLimit) {
       setIsPricingOpen(true);
     } else {
+      // 한도 미달: 바로 사이트 생성 플로우
       setIsAgreementOpen(true);
     }
   };
 
   const handlePlanSelect = (plan: string) => {
     setIsPricingOpen(false);
+    setUserPlan(plan as "starter" | "pro" | "enterprise");
+    // 업그레이드 후 한도 갱신
+    getSubscriptionStatus()
+      .then((status) => {
+        setSitesUsed(status.sites_used);
+        setSitesLimit(status.sites_limit);
+        setUserPlan(status.plan);
+      })
+      .catch(() => {});
+    // 업그레이드 후 사이트 생성 플로우 진행
     setIsAgreementOpen(true);
   };
 
   const handleAgreement = async () => {
     setAgreementLoading(true);
     try {
-      // 1. 고객사(client) 생성
-      const client: { id: string } = await api.post("api/v1/clients", { json: { name: "새 프로젝트" } }).json();
-      // 2. 사이트 생성
-      const site: { id: string } = await api.post("api/v1/sites", { json: { client_id: client.id, name: "", structure: "", template_id: "" } }).json();
-      // 3. siteId 저장 + 약관 닫고 챗봇 모달 열기
+      // 사이트 생성 (user_id는 JWT에서 자동 추출됨)
+      const site: { id: string } = await api.post("api/v1/sites", { json: { name: "", structure: "", template_id: "" } }).json();
       setCurrentSiteId(site.id);
       setIsAgreementOpen(false);
       setIsChatOpen(true);
     } catch (err) {
-      console.error("Failed to create client/site:", err);
+      console.error("Failed to create site:", err);
       alert("사이트 생성에 실패했습니다. 다시 시도해 주세요.");
     } finally {
       setAgreementLoading(false);
     }
   };
+
+  // 로딩 상태
+  if (hasSite === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full"></div>
+      </div>
+    );
+  }
 
   // 사이트 미발급 → 온보딩 대시보드
   if (!hasSite) {
@@ -73,7 +111,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* 모달들 */}
       <ChatModal isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} siteId={currentSiteId} />
-      <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} onSelect={handlePlanSelect} />
+      <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} onSelect={handlePlanSelect} currentPlan={userPlan} />
       <AgreementModal isOpen={isAgreementOpen} onClose={() => setIsAgreementOpen(false)} onAgree={handleAgreement} loading={agreementLoading} />
 
       {/* 헤더 */}

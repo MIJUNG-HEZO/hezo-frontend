@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Developer Docs | HEZO</title>
+    <link rel="stylesheet" href="../static/templates-v2.css" />
+  </head>
+  <body class="template-body blog">
+    
+    <header class="site-header blog-site-header">
+      <a class="site-brand" href="./index.html"><span>D</span><strong>Developer Docs</strong></a>
+      <nav><a href="#">Latest</a><a href="#">Series</a><a href="#">Archive</a><a href="#">About</a></nav>
+      <a class="site-cta" href="#">구독하기</a>
+    </header>
+    
+      <main class="page dev-page">
+        <section class="dev-shell"><aside><strong>Minu.dev</strong><a>Architecture</a><a>Frontend</a><a>AI Workflow</a><a>Notes</a></aside><div><p class="eyebrow">Latest note</p><h1>LangGraph로 대화 상태를 관리하는 방법</h1><p>챗봇을 단순 Q&A가 아니라 상태 기반 파이프라인으로 설계하는 과정을 기록합니다.</p><pre>const graph = new StateGraph(contractState)
+  .addNode("ask")
+  .addNode("validate")
+  .addConditionalEdges("validate");</pre></div></section>
+      </main>
+    
+    <footer class="site-footer">
+      <div><p class="eyebrow">HEZO Template</p><h2>읽고 저장하고 다시 찾아오는 콘텐츠 중심 블로그</h2></div>
+      <a href="../index.html">전체 템플릿 보기</a>
+    </footer>
+  </body>
+</html>

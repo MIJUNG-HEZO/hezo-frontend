@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { api } from "@/lib/api";
+import { useState, useEffect } from "react";
+import { api, getSubscriptionStatus, publishSite } from "@/lib/api";
+import PricingModal from "@/components/chat/PricingModal";
 
 type Phase = "start" | "structure" | "template" | "conversation" | "preview";
 
@@ -73,6 +74,82 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   const [phone, setPhone] = useState("");
 
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
+  const [showPricingInChat, setShowPricingInChat] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<"starter" | "pro" | "enterprise">("starter");
+  const [publishing, setPublishing] = useState(false);
+  const [publishSuccess, setPublishSuccess] = useState(false);
+
+  // 사용자의 현재 플랜 정보를 API에서 가져온다
+  useEffect(() => {
+    getSubscriptionStatus()
+      .then((status) => {
+        setCurrentPlan(status.plan);
+      })
+      .catch(() => {
+        // subscription API 실패 시 /auth/me로 시도
+        api.get("api/v1/auth/me").json<{ plan: "starter" | "pro" | "enterprise" }>()
+          .then((user) => {
+            setCurrentPlan(user.plan);
+          })
+          .catch(() => {
+            // 모두 실패 시 starter 유지
+          });
+      });
+  }, []);
+
+  /** 발행하기 버튼 핸들러: 유료 플랜이면 바로 발급, 무료면 모달 표시 */
+  const handlePublish = async () => {
+    if (currentPlan === "starter") {
+      setShowPricingInChat(true);
+      return;
+    }
+    // 유료 플랜: 바로 발급 시도
+    if (!siteId) {
+      setError("사이트 ID가 없습니다. 다시 시도해 주세요.");
+      return;
+    }
+    setPublishing(true);
+    setError("");
+    try {
+      await publishSite(siteId);
+      setPublishSuccess(true);
+      // 발행 성공 → 대시보드로 리다이렉트
+      setTimeout(() => {
+        onClose();
+        window.location.href = "/";
+      }, 1500);
+    } catch (err: unknown) {
+      // 403이면 한도 초과 → 업그레이드 모달 표시
+      if (err && typeof err === "object" && "response" in err) {
+        const response = (err as { response: Response }).response;
+        if (response.status === 403) {
+          setShowPricingInChat(true);
+        } else {
+          try {
+            const body = await response.json();
+            setError((body as { detail?: string }).detail || "발행에 실패했습니다");
+          } catch {
+            setError("발행에 실패했습니다");
+          }
+        }
+      } else {
+        setError("네트워크 오류가 발생했습니다");
+      }
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  /** 업그레이드 성공 후 플랜 상태 갱신 */
+  const handleUpgradeSuccess = () => {
+    getSubscriptionStatus()
+      .then((status) => setCurrentPlan(status.plan))
+      .catch(() => {
+        api.get("api/v1/auth/me").json<{ plan: "starter" | "pro" | "enterprise" }>()
+          .then((user) => setCurrentPlan(user.plan))
+          .catch(() => {});
+      });
+  };
 
   if (!isOpen) return null;
 
@@ -285,8 +362,60 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
 
                 <div className="flex gap-3 justify-center">
                   <button onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-lg text-sm">닫기</button>
-                  <button className="px-6 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">발행하기</button>
+                  <button
+                    onClick={handlePublish}
+                    disabled={publishing}
+                    className="px-6 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:bg-green-400 disabled:cursor-wait"
+                  >
+                    {publishing ? "발행 중..." : "발행하기"}
+                  </button>
                 </div>
+
+                {/* 발행 성공 메시지 */}
+                {publishSuccess && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-700 font-medium">✅ 사이트가 성공적으로 발행되었습니다!</p>
+                    <p className="text-xs text-green-600 mt-1">잠시 후 대시보드로 이동합니다...</p>
+                  </div>
+                )}
+
+                {/* 결제 모달 — 사이드바 업그레이드와 동일한 3가지 플랜 디자인 */}
+                <PricingModal
+                  isOpen={showPricingInChat}
+                  onClose={() => setShowPricingInChat(false)}
+                  onSelect={(plan) => {
+                    setCurrentPlan(plan as "starter" | "pro" | "enterprise");
+                    setShowPricingInChat(false);
+                    // 업그레이드 성공 후 자동으로 발행 시도
+                    if (siteId && plan !== "starter") {
+                      setPublishing(true);
+                      setError("");
+                      publishSite(siteId)
+                        .then(() => {
+                          setPublishSuccess(true);
+                          setTimeout(() => {
+                            onClose();
+                            window.location.href = "/";
+                          }, 1500);
+                        })
+                        .catch((err: unknown) => {
+                          if (err && typeof err === "object" && "response" in err) {
+                            const response = (err as { response: Response }).response;
+                            if (response.status === 403) {
+                              setShowPricingInChat(true);
+                            } else {
+                              setError("발행에 실패했습니다. 다시 시도해 주세요.");
+                            }
+                          } else {
+                            setError("네트워크 오류가 발생했습니다");
+                          }
+                        })
+                        .finally(() => setPublishing(false));
+                    }
+                  }}
+                  currentPlan={currentPlan}
+                  onSuccess={handleUpgradeSuccess}
+                />
               </div>
             )}
           </div>

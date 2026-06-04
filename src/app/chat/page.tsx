@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useChatSession, MAX_REGENERATIONS } from "@/hooks/useChatSession";
+import PricingModal from "@/components/chat/PricingModal";
 
 // ═══════════ 단계 정의 ═══════════
 type Phase = "start" | "structure" | "template" | "conversation";
@@ -54,10 +56,46 @@ export default function ChatPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [rightTab, setRightTab] = useState<"preview" | "schema">("preview");
+  const [showPricingModal, setShowPricingModal] = useState(false);
+
+  const {
+    sessionState,
+    sendMessage,
+    requestRegeneration,
+    startNewSession,
+    formatTime,
+  } = useChatSession();
 
   const progressItems = getProgressItems(phase);
   const currentStepNum = progressItems.filter((i) => i.status === "done").length + 1;
   const totalSteps = progressItems.length;
+
+  /** 메시지 전송 핸들러 */
+  const handleSendMessage = () => {
+    if (!input.trim()) return;
+    const canSend = sendMessage(input.trim());
+    if (canSend) {
+      setInput("");
+      // TODO: 실제 메시지를 채팅 목록에 추가하는 로직
+    }
+  };
+
+  /** 재생성 버튼 핸들러 */
+  const handleRegeneration = () => {
+    requestRegeneration();
+    // TODO: 실제 재생성 API 호출 로직
+  };
+
+  /** 새 세션 시작 핸들러 */
+  const handleStartNewSession = () => {
+    startNewSession();
+    setPhase("start");
+    setSelectedStructure(null);
+    setSelectedTemplate(null);
+    setInput("");
+  };
+
+  const canRegenerate = sessionState.regenerationCount < MAX_REGENERATIONS && !sessionState.isExpired;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] -m-8">
@@ -119,6 +157,22 @@ export default function ChatPage() {
               );
             })}
           </div>
+          {/* 세션 타이머 (대화 단계에서 세션 시작 후 표시) */}
+          {phase === "conversation" && sessionState.startedAt !== null && (
+            <div className="flex items-center justify-center mt-2">
+              <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+                sessionState.isExpired
+                  ? "bg-red-100 text-red-700"
+                  : sessionState.remainingSeconds <= 60
+                    ? "bg-yellow-100 text-yellow-700"
+                    : "bg-gray-100 text-gray-600"
+              }`}>
+                <span>⏱</span>
+                <span>{formatTime(sessionState.remainingSeconds)}</span>
+                {sessionState.isExpired && <span className="ml-1">만료</span>}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 메인 콘텐츠 영역 */}
@@ -254,6 +308,22 @@ export default function ChatPage() {
                   연락처(전화번호, 이메일)를 알려주세요.
                 </div>
               </div>
+
+              {/* 세션 만료 안내 메시지 */}
+              {sessionState.isExpired && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-center">
+                    <p className="text-sm text-red-700 font-medium mb-1">⏱ 세션이 만료되었습니다</p>
+                    <p className="text-xs text-red-600">세션이 만료되었습니다. 새 세션을 시작해주세요.</p>
+                  </div>
+                  <button
+                    onClick={handleStartNewSession}
+                    className="px-6 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                  >
+                    새 세션 시작
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -266,10 +336,38 @@ export default function ChatPage() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="메시지를 입력하세요..."
-                className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                onKeyDown={(e) => { if (e.key === "Enter") handleSendMessage(); }}
+                placeholder={sessionState.isExpired ? "세션이 만료되었습니다" : "메시지를 입력하세요..."}
+                disabled={sessionState.isExpired}
+                className={`flex-1 px-4 py-2.5 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                  sessionState.isExpired
+                    ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-50 border-gray-200"
+                }`}
               />
-              <button className="w-9 h-9 rounded-full bg-green-600 text-white flex items-center justify-center hover:bg-green-700">➤</button>
+              <button
+                onClick={handleSendMessage}
+                disabled={sessionState.isExpired || !input.trim()}
+                className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  sessionState.isExpired || !input.trim()
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : "bg-green-600 text-white hover:bg-green-700"
+                }`}
+              >
+                ➤
+              </button>
+              {/* 재생성 버튼 */}
+              <button
+                onClick={handleRegeneration}
+                disabled={!canRegenerate}
+                className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1 ${
+                  canRegenerate
+                    ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                }`}
+              >
+                🔄 재생성 ({sessionState.regenerationCount}/{MAX_REGENERATIONS})
+              </button>
             </div>
           </div>
         )}
@@ -323,6 +421,15 @@ export default function ChatPage() {
               <p className="text-[9px] text-gray-400 mt-2 text-center">
                 {selectedTemplate ? `${templateOptions[selectedStructure!]?.find((t) => t.id === selectedTemplate)?.name} 템플릿` : "랜딩페이지 템플릿"}
               </p>
+              {/* 사이트 발급하기 버튼 (프리뷰 확인 후) */}
+              {phase === "conversation" && (
+                <button
+                  onClick={() => setShowPricingModal(true)}
+                  className="w-full mt-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  사이트 발급하기
+                </button>
+              )}
             </div>
           ) : (
             <pre className="bg-gray-900 text-green-400 p-3 rounded-lg text-[8px] font-mono leading-relaxed">
@@ -341,6 +448,13 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      {/* 사이트 발급 결제 모달 — 사이드바 업그레이드와 동일한 3가지 플랜 디자인 */}
+      <PricingModal
+        isOpen={showPricingModal}
+        onClose={() => setShowPricingModal(false)}
+        onSelect={() => setShowPricingModal(false)}
+      />
     </div>
   );
 }

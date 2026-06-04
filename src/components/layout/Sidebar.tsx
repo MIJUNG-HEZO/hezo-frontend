@@ -2,10 +2,21 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { getUserState, setUserState, type UserState } from "@/lib/auth-guard";
+import { isAuthenticated, logout } from "@/lib/auth-guard";
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import BillingPanel from "@/components/layout/BillingPanel";
+import PricingModal from "@/components/chat/PricingModal";
+import type { UserResponse } from "@/types";
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  requiresSite?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: "/", label: "대시보드", icon: "📊" },
   { href: "/dashboard/ai-score", label: "AI 친화도 점수", icon: "🎯", requiresSite: true },
   { href: "/dashboard/llm-citations", label: "LLM 인용 현황", icon: "🔗", requiresSite: true },
@@ -17,43 +28,55 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [userState, setLocalState] = useState<UserState>("logged_in_no_site");
   const [isOpen, setIsOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [isRealLogin, setIsRealLogin] = useState(false);
+  const [isBillingOpen, setIsBillingOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [upgradePlan, setUpgradePlan] = useState<string | null>(null);
 
-  // pathname이 바뀔 때마다 상태 갱신 (로그인 후 이동 시 반영)
+  // API에서 가져온 유저/사이트 정보
+  const [hasSite, setHasSite] = useState(false);
+  const [userInfo, setUserInfo] = useState<UserResponse | null>(null);
+
+  // 마운트 시 + pathname 변경 시 유저/사이트 정보 fetch
   useEffect(() => {
-    setLocalState(getUserState());
-    setIsRealLogin(localStorage.getItem("hezo_real_login") === "true");
+    if (!isAuthenticated()) return;
+
+    // 사이트 목록 확인 (published 상태만 발급됨으로 간주)
+    api.get("api/v1/sites").json<{ id: string; status: string }[]>()
+      .then((sites) => setHasSite(sites.some((s) => s.status === "published")))
+      .catch(() => setHasSite(false));
+
+    // 유저 정보 확인
+    api.get("api/v1/auth/me").json<UserResponse>()
+      .then((user) => setUserInfo(user))
+      .catch(() => setUserInfo(null));
   }, [pathname]);
 
   // 인증 페이지에서는 사이드바 숨김
   if (pathname.startsWith("/auth/")) return null;
 
-  const hasSite = userState === "logged_in_has_site";
-
   const filteredNav = navItems.filter((item) => {
     if (item.requiresSite && !hasSite) return false;
-    if (item.requiresNoSite && hasSite) return false;
     return true;
   });
 
   const handleLogout = () => {
-    setUserState("not_logged_in");
-    setLocalState("not_logged_in");
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("hezo_real_login");
+    logout();
     setIsOpen(false);
     router.push("/auth/login");
   };
 
-  const handleSwitchState = (state: UserState) => {
-    setUserState(state);
-    setLocalState(state);
-    setShowProfileMenu(false);
-    setIsOpen(false);
-    window.location.reload();
+  const handleBillingUpgrade = (targetPlan: string) => {
+    setUpgradePlan(targetPlan);
+    setIsBillingOpen(false);
+    setIsPricingOpen(true);
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handlePricingSelect = (_plan: string) => {
+    setIsPricingOpen(false);
+    setUpgradePlan(null);
   };
 
   return (
@@ -89,7 +112,7 @@ export default function Sidebar() {
           <div className="px-4 py-3 border-b border-gray-100">
             <button className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-600 hover:bg-gray-100">
               <span className="text-xs">🌐</span>
-              <span>hezo-demo.com</span>
+              <span>내 사이트</span>
               <span className="ml-auto text-gray-400">▾</span>
             </button>
           </div>
@@ -122,6 +145,18 @@ export default function Sidebar() {
             <span className="text-base">💬</span>
             <span>새 사이트 만들기</span>
           </Link>
+
+          {/* 결제 및 관리 */}
+          <button
+            onClick={() => {
+              setIsBillingOpen(true);
+              setIsOpen(false);
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 mt-2"
+          >
+            <span className="text-base">💳</span>
+            <span>결제 및 관리</span>
+          </button>
         </nav>
 
         {/* 하단 프로필 */}
@@ -130,10 +165,12 @@ export default function Sidebar() {
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="w-full flex items-center gap-3 hover:bg-gray-50 rounded-lg p-1 transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-sm font-medium">H</div>
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-sm font-medium">
+              {userInfo?.name?.[0] || "H"}
+            </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-sm font-medium text-gray-900 truncate">HEZO Demo</p>
-              <p className="text-xs text-gray-400 truncate">owner@hezo.com</p>
+              <p className="text-sm font-medium text-gray-900 truncate">{userInfo?.name || "사용자"}</p>
+              <p className="text-xs text-gray-400 truncate">{userInfo?.email || ""}</p>
             </div>
             <span className="text-gray-400 text-xs">{showProfileMenu ? "▴" : "▾"}</span>
           </button>
@@ -142,23 +179,13 @@ export default function Sidebar() {
           {showProfileMenu && (
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
               <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                <p className="text-[10px] text-gray-400">현재 상태</p>
+                <p className="text-[10px] text-gray-400">현재 플랜</p>
                 <p className="text-xs font-medium text-gray-700 mt-0.5">
-                  {userState === "not_logged_in" && "🔴 비로그인"}
-                  {userState === "logged_in_no_site" && "🟡 로그인 (사이트 없음)"}
-                  {userState === "logged_in_has_site" && "🟢 로그인 (사이트 발급됨)"}
+                  {userInfo?.plan === "enterprise" && "🏢 Enterprise"}
+                  {userInfo?.plan === "pro" && "🚀 Pro"}
+                  {(!userInfo?.plan || userInfo?.plan === "starter") && "🌱 Starter"}
                 </p>
               </div>
-
-              {/* 개발용 상태 전환 — 실제 로그인 유저에게는 숨김 */}
-              {!isRealLogin && (
-                <div className="p-2 space-y-1">
-                  <p className="px-2 py-1 text-[9px] text-gray-400 uppercase">상태 전환 (개발용)</p>
-                  <button onClick={() => handleSwitchState("not_logged_in")} className="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-600 hover:bg-gray-50">🔴 비로그인</button>
-                  <button onClick={() => handleSwitchState("logged_in_no_site")} className="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-600 hover:bg-gray-50">🟡 사이트 없음</button>
-                  <button onClick={() => handleSwitchState("logged_in_has_site")} className="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-600 hover:bg-gray-50">🟢 사이트 있음</button>
-                </div>
-              )}
 
               <div className="p-2 border-t border-gray-100">
                 <button onClick={handleLogout} className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-600 hover:bg-red-50">🚪 로그아웃</button>
@@ -167,6 +194,24 @@ export default function Sidebar() {
           )}
         </div>
       </aside>
+
+      {/* BillingPanel */}
+      <BillingPanel
+        isOpen={isBillingOpen}
+        onClose={() => setIsBillingOpen(false)}
+        onUpgrade={handleBillingUpgrade}
+      />
+
+      {/* PricingModal (업그레이드 시) */}
+      <PricingModal
+        isOpen={isPricingOpen}
+        onClose={() => {
+          setIsPricingOpen(false);
+          setUpgradePlan(null);
+        }}
+        onSelect={handlePricingSelect}
+        targetPlan={upgradePlan as "pro" | "enterprise" | undefined}
+      />
     </>
   );
 }

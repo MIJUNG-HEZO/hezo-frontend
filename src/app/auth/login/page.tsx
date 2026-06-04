@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { setUserState } from "@/lib/auth-guard";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,17 +28,8 @@ export default function LoginPage() {
 
       // JWT 저장
       localStorage.setItem("access_token", res.access_token);
-      // 실제 로그인 표시 (Mock 전환 방지용)
-      localStorage.setItem("hezo_real_login", "true");
 
-      // 사이트 유무 확인
-      try {
-        const sites: unknown[] = await api.get("api/v1/sites").json();
-        setUserState(sites.length > 0 ? "logged_in_has_site" : "logged_in_no_site");
-      } catch {
-        setUserState("logged_in_no_site");
-      }
-
+      // 메인 페이지로 이동 (페이지에서 API로 사이트 유무 확인)
       router.push("/");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {

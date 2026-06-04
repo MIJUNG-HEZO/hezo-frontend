@@ -1,10 +1,42 @@
 "use client";
 
+import { useParams } from "next/navigation";
+import PublishButton from "@/components/preview/PublishButton";
+
 export default function PreviewPage() {
+  const params = useParams();
+  const siteId = params.siteId as string;
+
+  // TODO: 실제 구현 시 API에서 사용자 플랜 정보 및 사이트 상태를 가져옴
+  // 현재는 목업 데이터 사용
+  const siteStatus = "preview_ready";
+  const userPlan: "starter" | "pro" | "enterprise" = "starter";
+  const sitesUsed = 0;
+  const sitesLimit = 0;
+
   return (
     <div className="bg-white -m-8">
+      {/* 프리뷰 상단 액션 바 */}
+      <div className="sticky top-0 z-[60] bg-gray-900 text-white">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">프리뷰 모드</span>
+            <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded-full">
+              미발급
+            </span>
+          </div>
+          <PublishButton
+            siteId={siteId}
+            siteStatus={siteStatus}
+            userPlan={userPlan}
+            sitesUsed={sitesUsed}
+            sitesLimit={sitesLimit}
+          />
+        </div>
+      </div>
+
       {/* 사이트 네비게이션 */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-100">
+      <header className="sticky top-[52px] z-50 bg-white border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <span className="text-lg font-bold text-gray-800 flex items-center gap-2">🌿 바른한의원</span>

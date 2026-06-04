@@ -1,17 +1,155 @@
 "use client";
 
 import { useState } from "react";
+import { upgradePlan } from "@/lib/api";
 
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (plan: string) => void;
+  currentPlan?: "starter" | "pro" | "enterprise";
+  targetPlan?: "pro" | "enterprise";
+  onSuccess?: () => void;
 }
 
-export default function PricingModal({ isOpen, onClose, onSelect }: PricingModalProps) {
-  const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
-
+export default function PricingModal({
+  isOpen,
+  onClose,
+  onSelect,
+  currentPlan = "starter",
+  targetPlan,
+  onSuccess,
+}: PricingModalProps) {
   if (!isOpen) return null;
+
+  return (
+    <PricingModalContent
+      onClose={onClose}
+      onSelect={onSelect}
+      currentPlan={currentPlan}
+      targetPlan={targetPlan}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
+function PricingModalContent({
+  onClose,
+  onSelect,
+  currentPlan = "starter",
+  targetPlan,
+  onSuccess,
+}: Omit<PricingModalProps, "isOpen">) {
+  const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(targetPlan ?? null);
+
+  // 업그레이드 경로에 따른 버튼 상태 결정
+  function getButtonState(planId: string): {
+    label: string;
+    disabled: boolean;
+    style: string;
+    message?: string;
+  } {
+    // 현재 플랜인 경우
+    if (planId === currentPlan) {
+      return {
+        label: "현재 플랜",
+        disabled: true,
+        style: "border border-gray-300 text-gray-500 cursor-default",
+      };
+    }
+
+    // 현재 플랜보다 낮은 플랜
+    const planOrder = ["starter", "pro", "enterprise"];
+    const currentIndex = planOrder.indexOf(currentPlan);
+    const targetIndex = planOrder.indexOf(planId);
+
+    if (targetIndex < currentIndex) {
+      return {
+        label: "현재 플랜 이하",
+        disabled: true,
+        style: "border border-gray-300 text-gray-500 cursor-default",
+      };
+    }
+
+    // Starter 사용자: Enterprise 비활성
+    if (currentPlan === "starter" && planId === "enterprise") {
+      return {
+        label: "Enterprise 문의하기",
+        disabled: true,
+        style: "border border-gray-300 text-gray-400 cursor-not-allowed",
+        message: "Pro 구매 후 이용 가능",
+      };
+    }
+
+    // Starter 사용자: Pro 활성화
+    if (currentPlan === "starter" && planId === "pro") {
+      return {
+        label: "Pro 플랜 구매하기",
+        disabled: false,
+        style: "bg-green-600 text-white hover:bg-green-700",
+      };
+    }
+
+    // Pro 사용자: Enterprise 활성화
+    if (currentPlan === "pro" && planId === "enterprise") {
+      return {
+        label: "Enterprise 문의하기",
+        disabled: false,
+        style: "bg-gray-900 text-white hover:bg-gray-800",
+      };
+    }
+
+    // Enterprise 사용자: 모든 버튼 비활성
+    return {
+      label: "현재 플랜",
+      disabled: true,
+      style: "border border-gray-300 text-gray-500 cursor-default",
+    };
+  }
+
+  async function handleUpgrade(planId: string) {
+    const buttonState = getButtonState(planId);
+    if (buttonState.disabled) return;
+
+    setLoading(true);
+    setError(null);
+    setSelectedPlan(planId);
+
+    try {
+      await upgradePlan(planId);
+      setLoading(false);
+      onSelect(planId);
+      if (onSuccess) {
+        onSuccess();
+      }
+      onClose();
+    } catch (err: unknown) {
+      setLoading(false);
+      // ky HTTPError 처리
+      if (err && typeof err === "object" && "response" in err) {
+        const response = (err as { response: Response }).response;
+        try {
+          const body = await response.json();
+          if (response.status === 400) {
+            // 유효하지 않은 업그레이드 경로
+            setError(body.message || "허용된 업그레이드 경로: Starter→Pro, Pro→Enterprise");
+          } else if (response.status === 402) {
+            // 결제 실패
+            setError(body.message || "결제 처리에 실패했습니다. 다시 시도해주세요.");
+          } else {
+            setError(body.message || "업그레이드 처리 중 오류가 발생했습니다.");
+          }
+        } catch {
+          setError("업그레이드 처리 중 오류가 발생했습니다.");
+        }
+      } else {
+        setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+      }
+    }
+  }
 
   const plans = [
     {
@@ -21,9 +159,6 @@ export default function PricingModal({ isOpen, onClose, onSelect }: PricingModal
       price: { monthly: 0, yearly: 0 },
       priceLabel: "₩0",
       subLabel: "",
-      cta: "현재 플랜",
-      ctaStyle: "border border-gray-300 text-gray-500 cursor-default",
-      disabled: true,
       features: [
         "AI 챗봇 기반 사이트 1개 생성",
         "기본 템플릿 3종",
@@ -40,9 +175,6 @@ export default function PricingModal({ isOpen, onClose, onSelect }: PricingModal
       price: { monthly: 49000, yearly: 39000 },
       priceLabel: billing === "monthly" ? "₩49,000" : "₩39,000",
       subLabel: billing === "monthly" ? "/ 월 (부가세 포함)" : "/ 월 (연간 결제, 부가세 포함)",
-      cta: "Pro 플랜 구매하기",
-      ctaStyle: "bg-green-600 text-white hover:bg-green-700",
-      disabled: false,
       highlighted: true,
       features: [
         "Starter의 모든 기능 포함:",
@@ -61,9 +193,6 @@ export default function PricingModal({ isOpen, onClose, onSelect }: PricingModal
       price: { monthly: 190000, yearly: 160000 },
       priceLabel: billing === "monthly" ? "₩190,000~" : "₩160,000~",
       subLabel: billing === "monthly" ? "/ 월 (부가세 포함)" : "/ 월 (연간 결제, 부가세 포함)",
-      cta: "Enterprise 문의하기",
-      ctaStyle: "bg-gray-900 text-white hover:bg-gray-800",
-      disabled: false,
       features: [
         "Pro의 모든 기능에 다음 포함:",
         "전용 VPC 인프라 (완전 격리)",
@@ -104,58 +233,87 @@ export default function PricingModal({ isOpen, onClose, onSelect }: PricingModal
           </div>
         </div>
 
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="mx-8 mb-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+        )}
+
         {/* 플랜 카드 3개 */}
         <div className="grid grid-cols-3 gap-4 px-8 pb-8 pt-4">
-          {plans.map((plan) => (
-            <div
-              key={plan.id}
-              className={`rounded-xl border p-6 flex flex-col ${
-                plan.highlighted ? "border-green-300 bg-green-50/30 shadow-sm" : "border-gray-200"
-              }`}
-            >
-              {/* 플랜 아이콘 */}
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-lg mb-4">
-                {plan.id === "starter" && "🌱"}
-                {plan.id === "pro" && "🚀"}
-                {plan.id === "enterprise" && "🏢"}
-              </div>
+          {plans.map((plan) => {
+            const buttonState = getButtonState(plan.id);
+            const isLoadingThis = loading && selectedPlan === plan.id;
 
-              {/* 플랜명 */}
-              <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{plan.desc}</p>
-
-              {/* 가격 */}
-              <div className="mt-4 mb-4">
-                <span className="text-2xl font-bold text-gray-900">{plan.priceLabel}</span>
-                {plan.subLabel && <span className="text-xs text-gray-400 ml-1">{plan.subLabel}</span>}
-              </div>
-
-              {/* CTA 버튼 */}
-              <button
-                onClick={() => !plan.disabled && onSelect(plan.id)}
-                disabled={plan.disabled}
-                className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors ${plan.ctaStyle}`}
+            return (
+              <div
+                key={plan.id}
+                className={`rounded-xl border p-6 flex flex-col ${
+                  plan.highlighted ? "border-green-300 bg-green-50/30 shadow-sm" : "border-gray-200"
+                }`}
               >
-                {plan.cta}
-              </button>
+                {/* 플랜 아이콘 */}
+                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-lg mb-4">
+                  {plan.id === "starter" && "🌱"}
+                  {plan.id === "pro" && "🚀"}
+                  {plan.id === "enterprise" && "🏢"}
+                </div>
 
-              {/* 기능 목록 */}
-              <ul className="mt-5 space-y-2 flex-1">
-                {plan.features.map((feat, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
-                    {feat.endsWith(":") ? (
-                      <span className="font-medium text-gray-700">{feat}</span>
-                    ) : (
-                      <>
-                        <span className="text-green-500 mt-0.5">✓</span>
-                        <span>{feat}</span>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                {/* 플랜명 */}
+                <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{plan.desc}</p>
+
+                {/* 가격 */}
+                <div className="mt-4 mb-4">
+                  <span className="text-2xl font-bold text-gray-900">{plan.priceLabel}</span>
+                  {plan.subLabel && <span className="text-xs text-gray-400 ml-1">{plan.subLabel}</span>}
+                </div>
+
+                {/* CTA 버튼 */}
+                <button
+                  onClick={() => handleUpgrade(plan.id)}
+                  disabled={buttonState.disabled || loading}
+                  className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors ${buttonState.style} ${
+                    loading && !isLoadingThis ? "opacity-50" : ""
+                  }`}
+                >
+                  {isLoadingThis ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      처리 중...
+                    </span>
+                  ) : (
+                    buttonState.label
+                  )}
+                </button>
+
+                {/* 비활성 안내 문구 (Starter→Enterprise 직접 업그레이드 불가) */}
+                {buttonState.message && (
+                  <p className="text-xs text-orange-500 mt-1.5 text-center">{buttonState.message}</p>
+                )}
+
+                {/* 기능 목록 */}
+                <ul className="mt-5 space-y-2 flex-1">
+                  {plan.features.map((feat, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
+                      {feat.endsWith(":") ? (
+                        <span className="font-medium text-gray-700">{feat}</span>
+                      ) : (
+                        <>
+                          <span className="text-green-500 mt-0.5">✓</span>
+                          <span>{feat}</span>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
