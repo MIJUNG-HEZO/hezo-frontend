@@ -98,9 +98,9 @@ export default function ChatPage() {
   const canRegenerate = sessionState.regenerationCount < MAX_REGENERATIONS && !sessionState.isExpired;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] -m-8">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] -m-8">
       {/* ═══════════ 좌측: 진행 상황 패널 ═══════════ */}
-      <div className="w-60 bg-white border-r border-gray-200 p-5 flex flex-col">
+      <div className="hidden md:flex w-60 bg-white border-r border-gray-200 p-5 flex-col">
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-lg font-bold text-gray-900">HEZO</span>
@@ -202,7 +202,7 @@ export default function ChatPage() {
               <h2 className="text-lg font-bold text-gray-900 mb-1">사이트 구조를 선택하세요</h2>
               <p className="text-xs text-gray-500 mb-6">업종에 맞는 최적의 구조를 추천합니다. 원하시는 구조를 선택해 주세요.</p>
 
-              <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 {structureOptions.map((opt) => (
                   <div
                     key={opt.id}
@@ -238,7 +238,7 @@ export default function ChatPage() {
                 선택한 구조({structureOptions.find((s) => s.id === selectedStructure)?.label})에 맞는 템플릿 목록입니다.
               </p>
 
-              <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 {(templateOptions[selectedStructure] || []).map((tpl) => (
                   <div
                     key={tpl.id}
@@ -374,7 +374,7 @@ export default function ChatPage() {
       </div>
 
       {/* ═══════════ 우측: 미리보기 패널 ═══════════ */}
-      <div className="w-72 bg-white border-l border-gray-200 flex flex-col">
+      <div className="hidden md:flex w-72 bg-white border-l border-gray-200 flex-col">
         <div className="flex border-b border-gray-200">
           <button onClick={() => setRightTab("preview")} className={`flex-1 py-3 text-xs font-medium ${rightTab === "preview" ? "text-green-700 border-b-2 border-green-600" : "text-gray-400"}`}>
             미리보기

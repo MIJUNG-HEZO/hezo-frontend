@@ -141,7 +141,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 상단 3카드 */}
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* AI 친화도 점수 */}
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-sm font-medium text-gray-500 mb-3">AI 친화도 점수</h3>
@@ -211,7 +211,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 중단 3카드 */}
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* 신규 문의 & 예약 */}
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-sm font-medium text-gray-500 mb-3">신규 문의 & 예약</h3>
@@ -280,7 +280,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 하단 2카드 */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* 최근 LLM 인용 예시 */}
         <div className="bg-white rounded-xl p-6 border border-gray-100">
           <h3 className="text-sm font-medium text-gray-500 mb-4">최근 LLM 인용 예시</h3>

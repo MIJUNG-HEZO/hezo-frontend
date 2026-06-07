@@ -241,7 +241,7 @@ function PricingModalContent({
         )}
 
         {/* 플랜 카드 3개 */}
-        <div className="grid grid-cols-3 gap-4 px-8 pb-8 pt-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-8 pb-8 pt-4 max-h-[60vh] overflow-y-auto md:max-h-none md:overflow-visible">
           {plans.map((plan) => {
             const buttonState = getButtonState(plan.id);
             const isLoadingThis = loading && selectedPlan === plan.id;
