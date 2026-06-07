@@ -2,27 +2,48 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { api } from "@/lib/api";
+
+const loginSchema = z.object({
+  email: z.string().email("올바른 이메일을 입력해 주세요"),
+  password: z.string().min(1, "비밀번호를 입력해 주세요"),
+});
+
+const signupSchema = z.object({
+  email: z.string().email("올바른 이메일을 입력해 주세요"),
+  password: z.string().min(8, "비밀번호는 8자 이상이어야 합니다"),
+  name: z.string().min(1, "이름을 입력해 주세요"),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
+type SignupFormData = z.infer<typeof signupSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const loginForm = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const signupForm = useForm<SignupFormData>({
+    resolver: zodResolver(signupSchema),
+  });
+
+  const handleSubmit = async (data: LoginFormData | SignupFormData) => {
     setError("");
     setLoading(true);
 
     try {
       const endpoint = mode === "login" ? "api/v1/auth/login" : "api/v1/auth/signup";
       const body = mode === "login"
-        ? { email, password }
-        : { email, password, name };
+        ? { email: data.email, password: data.password }
+        : data;
 
       const res: { access_token: string } = await api.post(endpoint, { json: body }).json();
 
@@ -45,6 +66,13 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const switchMode = () => {
+    setMode(mode === "login" ? "signup" : "login");
+    setError("");
+    loginForm.reset();
+    signupForm.reset();
   };
 
   return (
@@ -88,46 +116,87 @@ export default function LoginPage() {
         </div>
 
         {/* 이메일 로그인/회원가입 폼 */}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {mode === "signup" && (
-            <input
-              type="text"
-              placeholder="이름"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          )}
-          <input
-            type="email"
-            placeholder="이메일"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-          <input
-            type="password"
-            placeholder="비밀번호"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 disabled:opacity-50"
-          >
-            {loading ? "처리 중..." : mode === "login" ? "로그인" : "회원가입"}
-          </button>
-        </form>
+        {mode === "login" ? (
+          <form onSubmit={loginForm.handleSubmit(handleSubmit)} className="space-y-3">
+            <div>
+              <input
+                type="email"
+                placeholder="이메일"
+                {...loginForm.register("email")}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              {loginForm.formState.errors.email && (
+                <p className="mt-1 text-xs text-red-500">{loginForm.formState.errors.email.message}</p>
+              )}
+            </div>
+            <div>
+              <input
+                type="password"
+                placeholder="비밀번호"
+                {...loginForm.register("password")}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              {loginForm.formState.errors.password && (
+                <p className="mt-1 text-xs text-red-500">{loginForm.formState.errors.password.message}</p>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 disabled:opacity-50"
+            >
+              {loading ? "처리 중..." : "로그인"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={signupForm.handleSubmit(handleSubmit)} className="space-y-3">
+            <div>
+              <input
+                type="text"
+                placeholder="이름"
+                {...signupForm.register("name")}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              {signupForm.formState.errors.name && (
+                <p className="mt-1 text-xs text-red-500">{signupForm.formState.errors.name.message}</p>
+              )}
+            </div>
+            <div>
+              <input
+                type="email"
+                placeholder="이메일"
+                {...signupForm.register("email")}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              {signupForm.formState.errors.email && (
+                <p className="mt-1 text-xs text-red-500">{signupForm.formState.errors.email.message}</p>
+              )}
+            </div>
+            <div>
+              <input
+                type="password"
+                placeholder="비밀번호 (8자 이상)"
+                {...signupForm.register("password")}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              {signupForm.formState.errors.password && (
+                <p className="mt-1 text-xs text-red-500">{signupForm.formState.errors.password.message}</p>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 disabled:opacity-50"
+            >
+              {loading ? "처리 중..." : "회원가입"}
+            </button>
+          </form>
+        )}
 
         {/* 모드 전환 */}
         <div className="mt-4 text-center">
           <button
-            onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
+            onClick={switchMode}
             className="text-xs text-green-600 hover:underline"
           >
             {mode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}

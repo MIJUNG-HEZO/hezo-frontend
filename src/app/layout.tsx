@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
 import AuthGuard from "@/components/layout/AuthGuard";
+import QueryProvider from "@/components/providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "HEZO Studio",
@@ -16,10 +17,12 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="bg-gray-50 antialiased">
-        <AuthGuard>
-          <Sidebar />
-          <main className="min-h-screen p-8 pl-16">{children}</main>
-        </AuthGuard>
+        <QueryProvider>
+          <AuthGuard>
+            <Sidebar />
+            <main className="min-h-screen p-8 pl-16">{children}</main>
+          </AuthGuard>
+        </QueryProvider>
       </body>
     </html>
   );
