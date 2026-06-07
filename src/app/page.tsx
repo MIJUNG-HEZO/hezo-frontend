@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import ChatModal from "@/components/chat/ChatModal";
 import PricingModal from "@/components/chat/PricingModal";
@@ -39,13 +39,7 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (hasSite !== null && searchParams.get("chat") === "open") {
-      handleNewSite();
-    }
-  }, [searchParams, hasSite]);
-
-  const handleNewSite = () => {
+  const handleNewSite = useCallback(() => {
     // 한도 체크: starter이거나 한도에 도달했으면 업그레이드 모달
     if (userPlan === "starter" || sitesUsed >= sitesLimit) {
       setIsPricingOpen(true);
@@ -53,7 +47,14 @@ export default function DashboardPage() {
       // 한도 미달: 바로 사이트 생성 플로우
       setIsAgreementOpen(true);
     }
-  };
+  }, [userPlan, sitesUsed, sitesLimit]);
+
+  useEffect(() => {
+    if (hasSite !== null && searchParams.get("chat") === "open") {
+      const timeoutId = window.setTimeout(handleNewSite, 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [searchParams, hasSite, handleNewSite]);
 
   const handlePlanSelect = (plan: string) => {
     setIsPricingOpen(false);

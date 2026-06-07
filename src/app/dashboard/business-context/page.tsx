@@ -125,6 +125,7 @@ export default function BusinessContextDashboard() {
                 ))}
               </div>
               <div className="mt-4 flex items-center gap-2 p-3 bg-green-50 rounded-lg">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="https://www.data.go.kr/images/common/logo.png" alt="" className="h-4" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}/>
                 <span className="text-[10px] text-green-700">🏛 공공데이터포털 API 연동</span>
                 <span className="text-[10px] text-green-600 ml-auto font-medium">연동 확인 완료</span>

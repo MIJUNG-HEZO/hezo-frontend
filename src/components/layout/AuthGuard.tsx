@@ -1,34 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth-guard";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [checked, setChecked] = useState(false);
+  const isAuthPage = pathname.startsWith("/auth/");
+  const authenticated = isAuthenticated();
 
   useEffect(() => {
-    // 인증 페이지는 가드 스킵
-    if (pathname.startsWith("/auth/")) {
-      setChecked(true);
-      return;
-    }
-
-    if (!isAuthenticated()) {
+    if (!isAuthPage && !authenticated) {
       router.replace("/auth/login");
-    } else {
-      setChecked(true);
     }
-  }, [pathname, router]);
+  }, [isAuthPage, authenticated, router]);
 
   // 인증 페이지는 가드 없이 렌더
-  if (pathname.startsWith("/auth/")) {
+  if (isAuthPage) {
     return <>{children}</>;
   }
 
-  if (!checked) {
+  if (!authenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full"></div>
