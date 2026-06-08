@@ -19,12 +19,39 @@ export interface UserResponse {
   can_upgrade: boolean;
 }
 
-// 구독 플랜 상태 (GET /api/v1/subscription/status 응답)
+// 구독 플랜 상태 (GET /api/v1/subscriptions/me 응답)
+export interface PlanInfo {
+  id: string;
+  code: string;       // "FREE" | "PRO" | "MAX"
+  name: string;
+  price_monthly: number;
+  currency: string;
+  max_sites: number;
+  can_publish: boolean;
+}
+
+export interface SubscriptionInfo {
+  id: string;
+  status: string;     // "active" | "trialing" | "past_due" | "canceled" | "expired"
+  started_at: string;
+  ended_at: string | null;
+  renewed_at: string | null;
+  plan: PlanInfo;
+}
+
+export interface MySubscriptionResponse {
+  subscription: SubscriptionInfo;
+}
+
+// 프론트에서 사용하는 통합 구독 상태 (API 응답을 가공한 것)
 export interface SubscriptionStatus {
   plan: "starter" | "pro" | "enterprise";
+  plan_code: string;
+  plan_name: string;
   sites_used: number;
   sites_limit: number;
   can_upgrade: boolean;
+  can_publish: boolean;
   next_plan: string | null;
   plan_updated_at: string | null;
 }
