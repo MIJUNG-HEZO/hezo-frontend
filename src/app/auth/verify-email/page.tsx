@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -9,6 +9,33 @@ export default function VerifyEmailPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 메일 발송 후 주기적으로 인증 상태 체크 (5초마다)
+  useEffect(() => {
+    if (!sent) return;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await api.post("api/v1/auth/email-verification/request").json<{ expires_at: string }>();
+        // 아직 미인증 → 계속 대기 (이미 인증됐으면 409 에러로 빠짐)
+        void res;
+      } catch (err: unknown) {
+        if (err && typeof err === "object" && "response" in err) {
+          const response = (err as { response: Response }).response;
+          if (response.status === 409) {
+            // EMAIL_ALREADY_VERIFIED → 인증 완료!
+            if (pollRef.current) clearInterval(pollRef.current);
+            router.push("/");
+          }
+        }
+      }
+    }, 5000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [sent, router]);
 
   const handleRequestVerification = async () => {
     setLoading(true);
