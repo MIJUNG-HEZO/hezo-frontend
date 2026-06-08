@@ -114,11 +114,15 @@ export default function LoginPage() {
         {/* 소셜 로그인 버튼 (나중에 구현) */}
         <div className="space-y-2.5 mb-5">
           <button
-            disabled
-            className="w-full py-3 bg-[#FEE500] text-gray-900 rounded-lg font-medium text-sm flex items-center justify-center gap-2 opacity-50 cursor-not-allowed"
+            onClick={() => {
+              const KAKAO_CLIENT_ID = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID || "";
+              const REDIRECT_URI = `${window.location.origin}/oauth/kakao/callback`;
+              const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`;
+              window.location.href = kakaoAuthUrl;
+            }}
+            className="w-full py-3 bg-[#FEE500] text-gray-900 rounded-lg font-medium text-sm flex items-center justify-center gap-2 hover:bg-[#FDD800] transition-colors"
           >
             💬 카카오로 시작하기
-            <span className="text-[9px] text-gray-500">(준비 중)</span>
           </button>
           <button
             disabled

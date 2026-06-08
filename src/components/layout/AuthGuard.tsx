@@ -11,7 +11,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // 인증 페이지 및 이메일 인증 페이지는 가드 스킵
-    if (pathname.startsWith("/auth/") || pathname.startsWith("/email-verification")) {
+    if (pathname.startsWith("/auth/") || pathname.startsWith("/email-verification") || pathname.startsWith("/oauth/")) {
       setChecked(true);
       return;
     }
@@ -24,7 +24,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [pathname, router]);
 
   // 인증 페이지 및 이메일 인증 페이지는 가드 없이 렌더
-  if (pathname.startsWith("/auth/") || pathname.startsWith("/email-verification")) {
+  if (pathname.startsWith("/auth/") || pathname.startsWith("/email-verification") || pathname.startsWith("/oauth/")) {
     return <>{children}</>;
   }
 
