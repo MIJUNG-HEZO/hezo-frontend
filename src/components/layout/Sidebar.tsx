@@ -71,7 +71,13 @@ export default function Sidebar() {
     return true;
   });
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // 백엔드에 로그아웃 요청 (refresh_token revoke + cookie 삭제)
+      await api.post("api/v1/auth/logout").text();
+    } catch {
+      // 실패해도 프론트 토큰은 삭제
+    }
     logout();
     setIsOpen(false);
     router.push("/auth/login");
