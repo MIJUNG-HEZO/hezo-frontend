@@ -40,23 +40,39 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const endpoint = mode === "login" ? "api/v1/auth/login" : "api/v1/auth/signup";
-      const body = mode === "login"
-        ? { email: data.email, password: data.password }
-        : data;
+      if (mode === "signup") {
+        // 1. 회원가입 (토큰 반환 안 함 — 유저 정보만 반환)
+        await api.post("api/v1/auth/signup", { json: data }).json();
 
-      const res: { access_token: string } = await api.post(endpoint, { json: body }).json();
+        // 2. 회원가입 성공 후 자동 로그인
+        const loginRes: { access_token: string } = await api
+          .post("api/v1/auth/login", { json: { email: data.email, password: data.password } })
+          .json();
 
-      // JWT 저장
-      localStorage.setItem("access_token", res.access_token);
+        localStorage.setItem("access_token", loginRes.access_token);
+      } else {
+        // 로그인
+        const res: { access_token: string } = await api
+          .post("api/v1/auth/login", { json: { email: data.email, password: data.password } })
+          .json();
 
-      // 메인 페이지로 이동 (페이지에서 API로 사이트 유무 확인)
+        localStorage.setItem("access_token", res.access_token);
+      }
+
+      // 메인 페이지로 이동
       router.push("/");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         try {
-          const data = await (err as { response: Response }).response.json();
-          setError((data as { detail?: string }).detail || "요청에 실패했습니다");
+          const body = await (err as { response: Response }).response.json();
+          // 백엔드 팀 에러 형식: { error: { code, message } } 또는 { detail: "..." }
+          if (body.error?.message) {
+            setError(body.error.message);
+          } else if (body.detail) {
+            setError(body.detail);
+          } else {
+            setError("요청에 실패했습니다");
+          }
         } catch {
           setError("서버 연결에 실패했습니다");
         }

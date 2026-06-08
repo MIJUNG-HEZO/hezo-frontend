@@ -33,13 +33,20 @@ export default function Sidebar() {
   const [isBillingOpen, setIsBillingOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [upgradePlan, setUpgradePlan] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   // API에서 가져온 유저/사이트 정보
   const [hasSite, setHasSite] = useState(false);
   const [userInfo, setUserInfo] = useState<UserResponse | null>(null);
 
+  // 클라이언트 마운트 확인 (SSR hydration 불일치 방지)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // 마운트 시 + pathname 변경 시 유저/사이트 정보 fetch
   useEffect(() => {
+    if (!mounted) return;
     if (!isAuthenticated()) return;
 
     // 사이트 목록 확인 (published 상태만 발급됨으로 간주)
@@ -55,6 +62,9 @@ export default function Sidebar() {
 
   // 인증 페이지에서는 사이드바 숨김
   if (pathname.startsWith("/auth/")) return null;
+
+  // SSR hydration 불일치 방지: 마운트 전에는 렌더링하지 않음
+  if (!mounted) return null;
 
   const filteredNav = navItems.filter((item) => {
     if (item.requiresSite && !hasSite) return false;
