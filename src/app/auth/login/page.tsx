@@ -50,6 +50,10 @@ export default function LoginPage() {
           .json();
 
         localStorage.setItem("access_token", loginRes.access_token);
+
+        // 3. 이메일 인증 페이지로 이동
+        router.push("/auth/verify-email");
+        return;
       } else {
         // 로그인
         const res: { access_token: string } = await api

@@ -10,8 +10,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    // 인증 페이지는 가드 스킵
-    if (pathname.startsWith("/auth/")) {
+    // 인증 페이지 및 이메일 인증 페이지는 가드 스킵
+    if (pathname.startsWith("/auth/") || pathname.startsWith("/email-verification")) {
       setChecked(true);
       return;
     }
@@ -23,8 +23,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router]);
 
-  // 인증 페이지는 가드 없이 렌더
-  if (pathname.startsWith("/auth/")) {
+  // 인증 페이지 및 이메일 인증 페이지는 가드 없이 렌더
+  if (pathname.startsWith("/auth/") || pathname.startsWith("/email-verification")) {
     return <>{children}</>;
   }
 
