@@ -19,10 +19,18 @@ export default function DashboardPage() {
   const [userPlan, setUserPlan] = useState<"starter" | "pro" | "enterprise">("starter");
   const [sitesUsed, setSitesUsed] = useState(0);
   const [sitesLimit, setSitesLimit] = useState(0);
+  const [welcomeBack, setWelcomeBack] = useState(false);
   const searchParams = useSearchParams();
 
   useEffect(() => {
     if (!isAuthenticated()) return;
+
+    // 재가입 유저 환영 메시지 체크
+    if (localStorage.getItem("hezo_welcome_back") === "true") {
+      setWelcomeBack(true);
+      localStorage.removeItem("hezo_welcome_back");
+      setTimeout(() => setWelcomeBack(false), 5000);
+    }
 
     // API에서 발급된(published) 사이트 유무 확인
     api.get("api/v1/sites").json<{ id: string; status: string }[]>()
@@ -90,9 +98,16 @@ export default function DashboardPage() {
   // 로딩 상태
   if (hasSite === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full"></div>
-      </div>
+      <>
+        {welcomeBack && (
+          <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-6 py-3 rounded-xl shadow-lg animate-pulse">
+            <p className="text-sm font-medium">🎉 다시 돌아오셨군요! 반갑습니다.</p>
+          </div>
+        )}
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full"></div>
+        </div>
+      </>
     );
   }
 
@@ -110,6 +125,16 @@ export default function DashboardPage() {
   // 사이트 발급됨 → 기존 데이터 대시보드
   return (
     <div className="space-y-6">
+      {/* 재가입 유저 환영 메시지 */}
+      {welcomeBack && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+          <span className="text-2xl">🎉</span>
+          <div>
+            <p className="text-sm font-medium text-green-800">다시 돌아오셨군요! 반갑습니다.</p>
+            <p className="text-xs text-green-600">HEZO에서 다시 만나 기쁩니다. 새로운 사이트를 만들어 보세요.</p>
+          </div>
+        </div>
+      )}
       {/* 모달들 */}
       <ChatModal isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} siteId={currentSiteId} />
       <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} onSelect={handlePlanSelect} currentPlan={userPlan} />

@@ -42,7 +42,16 @@ export default function LoginPage() {
     try {
       if (mode === "signup") {
         // 1. 회원가입 (토큰 반환 안 함 — 유저 정보만 반환)
-        await api.post("api/v1/auth/signup", { json: data }).json();
+        const signupRes = await api.post("api/v1/auth/signup", { json: data }).json<{
+          id: string;
+          created_at: string;
+          updated_at: string;
+        }>();
+
+        // 재가입 유저 감지 (created_at이 오래된 경우)
+        const createdAt = new Date(signupRes.created_at);
+        const now = new Date();
+        const isReturningUser = (now.getTime() - createdAt.getTime()) > 60000; // 1분 이상 차이
 
         // 2. 회원가입 성공 후 자동 로그인
         const loginRes: { access_token: string } = await api
@@ -50,6 +59,11 @@ export default function LoginPage() {
           .json();
 
         localStorage.setItem("access_token", loginRes.access_token);
+
+        if (isReturningUser) {
+          // 재가입 유저 → 대시보드에 환영 메시지 표시
+          localStorage.setItem("hezo_welcome_back", "true");
+        }
 
         // 3. 이메일 인증 페이지로 이동
         router.push("/auth/verify-email");

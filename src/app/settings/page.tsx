@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { api } from "@/lib/api";
+import { logout } from "@/lib/auth-guard";
 
 // Zod v4 스키마 (hookform/resolvers 없이 수동 검증)
 const passwordSchema = z.object({
@@ -17,8 +20,12 @@ const passwordSchema = z.object({
 type PasswordFormData = z.infer<typeof passwordSchema>;
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("김동균");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [editName, setEditName] = useState(profileName);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
@@ -194,13 +201,75 @@ export default function SettingsPage() {
           계정을 삭제하면 모든 데이터가 영구적으로 제거됩니다. 이 작업은 되돌릴 수 없습니다.
         </p>
         <button
-          disabled
-          className="px-4 py-2 bg-red-100 text-red-400 text-sm rounded-lg cursor-not-allowed flex items-center gap-2"
+          onClick={() => setShowDeleteModal(true)}
+          className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
         >
           계정 삭제
-          <span className="px-2 py-0.5 bg-red-50 text-red-400 text-[10px] rounded">준비 중</span>
         </button>
       </div>
+
+      {/* 회원탈퇴 확인 모달 */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowDeleteModal(false)} />
+          <div className="relative bg-white rounded-2xl p-8 w-[400px] shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center text-2xl">
+                ⚠️
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">정말 탈퇴하시겠습니까?</h3>
+              <p className="text-sm text-gray-500">
+                계정을 삭제하면 모든 사이트, 구독, 데이터가 삭제됩니다.
+                <br />
+                <strong className="text-red-600">이 작업은 되돌릴 수 없습니다.</strong>
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 py-2.5 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  setDeleteLoading(true);
+                  setDeleteError("");
+                  try {
+                    await api.delete("api/v1/auth/me").text();
+                    logout();
+                    router.push("/auth/login");
+                  } catch (err: unknown) {
+                    if (err && typeof err === "object" && "response" in err) {
+                      try {
+                        const body = await (err as { response: Response }).response.json();
+                        setDeleteError(body.error?.message || "계정 삭제에 실패했습니다.");
+                      } catch {
+                        setDeleteError("계정 삭제에 실패했습니다.");
+                      }
+                    } else {
+                      setDeleteError("서버 연결에 실패했습니다.");
+                    }
+                  } finally {
+                    setDeleteLoading(false);
+                  }
+                }}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteLoading ? "삭제 중..." : "계정 삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
