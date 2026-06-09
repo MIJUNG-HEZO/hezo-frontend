@@ -1,5 +1,5 @@
 import ky, { isHTTPError, type BeforeErrorHook } from "ky";
-import type { SubscriptionStatus, UpgradeResult, MySubscriptionResponse } from "@/types";
+import type { SubscriptionStatus, UpgradeResult, MySubscriptionResponse, UserResponse } from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -57,6 +57,33 @@ function getNextPlan(code: string): string | null {
   return map[code] ?? null;
 }
 
+// --- Sites API ---
+
+export interface SiteSummary {
+  id: string;
+  name: string;
+  site_type: string;
+  module_key: string;
+  status: string;
+  is_published: boolean;
+  published_at: string | null;
+}
+
+/** GET /api/v1/sites — 백엔드는 { items, total } 형태로 응답한다. */
+export async function getSites(): Promise<SiteSummary[]> {
+  const res = await api
+    .get("api/v1/sites")
+    .json<{ items: SiteSummary[]; total: number }>();
+  return res.items ?? [];
+}
+
+// --- Users API ---
+
+/** GET /api/v1/users/me — 현재 로그인 사용자 프로필 */
+export async function getCurrentUser(): Promise<UserResponse> {
+  return api.get("api/v1/users/me").json<UserResponse>();
+}
+
 export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   // 백엔드 팀 API: GET /api/v1/subscriptions/me
   const data = await api.get("api/v1/subscriptions/me").json<MySubscriptionResponse>();
@@ -66,8 +93,8 @@ export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   // 사이트 수 조회 (published 기준)
   let sitesUsed = 0;
   try {
-    const sites = await api.get("api/v1/sites").json<{ id: string; status: string }[]>();
-    sitesUsed = sites.filter((s) => s.status === "published" || s.is_published).length;
+    const sites = await getSites();
+    sitesUsed = sites.filter((s) => s.is_published).length;
   } catch {
     // sites 조회 실패 시 0으로 유지
   }

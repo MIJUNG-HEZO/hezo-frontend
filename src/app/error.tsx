@@ -1,5 +1,8 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
+import { Button } from "@/components/ui/Button";
+
 export default function GlobalError({
   error,
   reset,
@@ -8,19 +11,18 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl p-10 border border-gray-200 w-[400px] shadow-sm text-center">
-        <div className="text-4xl mb-4">⚠️</div>
-        <h2 className="text-lg font-bold text-gray-900 mb-2">오류가 발생했습니다</h2>
-        <p className="text-sm text-gray-500 mb-6">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <div className="w-[400px] max-w-full rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-error-50">
+          <Icon name="triangle-alert" size={28} className="text-error-600" />
+        </div>
+        <h2 className="mb-2 font-display text-lg font-bold text-gray-900">오류가 발생했습니다</h2>
+        <p className="mb-6 text-sm text-gray-500">
           {error.message || "예기치 않은 오류가 발생했습니다. 다시 시도해 주세요."}
         </p>
-        <button
-          onClick={reset}
-          className="px-6 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
-        >
+        <Button hierarchy="primary" size="md" onClick={reset}>
           다시 시도
-        </button>
+        </Button>
       </div>
     </div>
   );

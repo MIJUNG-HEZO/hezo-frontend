@@ -1,3 +1,13 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+/**
+ * Tailwind 클래스 병합 — 충돌 시 뒤 클래스가 이깁니다. (clsx + tailwind-merge)
+ */
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs));
+}
+
 /**
  * 남은 시간(초)을 "M:SS" 형식 문자열로 변환합니다.
  *

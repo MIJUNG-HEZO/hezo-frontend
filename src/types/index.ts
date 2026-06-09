@@ -7,16 +7,16 @@ export interface User {
   oauthProvider: "email" | "kakao" | "naver";
 }
 
-// 백엔드 GET /api/v1/auth/me 응답 타입 (플랜 정보 포함)
+// 백엔드 GET /api/v1/users/me 응답 타입
 export interface UserResponse {
   id: string;
   email: string;
   name: string;
-  oauth_provider: "email" | "kakao" | "naver";
-  plan: "starter" | "pro" | "enterprise";
-  sites_count: number;
-  sites_limit: number;
-  can_upgrade: boolean;
+  phone: string | null;
+  email_verified_at: string | null;
+  email_verified: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // 구독 플랜 상태 (GET /api/v1/subscriptions/me 응답)

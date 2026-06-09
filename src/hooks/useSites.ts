@@ -7,19 +7,26 @@ interface SiteListItem {
   name: string;
   status: string;
   site_type?: string;
+  module_key?: string;
   is_published?: boolean;
 }
 
 export function useSites() {
   return useQuery<SiteListItem[]>({
     queryKey: ["sites"],
-    queryFn: () => api.get("api/v1/sites").json<SiteListItem[]>(),
+    queryFn: async () => {
+      // 백엔드는 { items, total } 형태로 응답한다.
+      const res = await api
+        .get("api/v1/sites")
+        .json<{ items: SiteListItem[]; total: number }>();
+      return res.items ?? [];
+    },
     retry: false,
   });
 }
 
 export function useHasPublishedSite() {
   const { data: sites, isLoading } = useSites();
-  const hasPublished = sites?.some((s) => s.status === "published") ?? false;
+  const hasPublished = sites?.some((s) => s.is_published) ?? false;
   return { hasPublished, isLoading };
 }

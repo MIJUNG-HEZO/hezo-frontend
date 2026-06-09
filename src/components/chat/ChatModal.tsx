@@ -3,13 +3,18 @@
 import { useState, useEffect } from "react";
 import { api, getSubscriptionStatus, publishSite } from "@/lib/api";
 import PricingModal from "@/components/chat/PricingModal";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { cn } from "@/lib/utils";
 
 type Phase = "start" | "structure" | "template" | "conversation" | "preview";
 
-const structureOptions = [
-  { id: "landing", label: "랜딩페이지", desc: "한 페이지로 핵심 메시지 전달", icon: "🖥️", recommended: true },
-  { id: "multi", label: "일반 홈페이지", desc: "여러 페이지로 상세 정보 전달", icon: "📄" },
-  { id: "store", label: "스토어", desc: "상품/메뉴 카탈로그 중심", icon: "🛒" },
+const structureOptions: { id: string; label: string; desc: string; icon: IconName; recommended?: boolean }[] = [
+  { id: "landing", label: "랜딩페이지", desc: "한 페이지로 핵심 메시지 전달", icon: "monitor", recommended: true },
+  { id: "multi", label: "일반 홈페이지", desc: "여러 페이지로 상세 정보 전달", icon: "file-text" },
+  { id: "store", label: "스토어", desc: "상품/메뉴 카탈로그 중심", icon: "shopping-cart" },
 ];
 
 const templateOptions: Record<string, { id: string; name: string; desc: string; previewUrl: string }[]> = {
@@ -58,17 +63,14 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // prop에서 siteId 동기화
   useState(() => {
     if (propSiteId) setSiteId(propSiteId);
   });
 
-  // propSiteId가 바뀌면 반영
   if (propSiteId && propSiteId !== siteId) {
     setSiteId(propSiteId);
   }
 
-  // 대화 단계 하드코딩 데이터
   const [businessName, setBusinessName] = useState("");
   const [services, setServices] = useState("");
   const [phone, setPhone] = useState("");
@@ -79,31 +81,17 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   const [publishing, setPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
 
-  // 사용자의 현재 플랜 정보를 API에서 가져온다
   useEffect(() => {
     getSubscriptionStatus()
-      .then((status) => {
-        setCurrentPlan(status.plan);
-      })
-      .catch(() => {
-        // subscription API 실패 시 /auth/me로 시도
-        api.get("api/v1/auth/me").json<{ plan: "starter" | "pro" | "enterprise" }>()
-          .then((user) => {
-            setCurrentPlan(user.plan);
-          })
-          .catch(() => {
-            // 모두 실패 시 starter 유지
-          });
-      });
+      .then((status) => setCurrentPlan(status.plan))
+      .catch(() => {});
   }, []);
 
-  /** 발행하기 버튼 핸들러: 유료 플랜이면 바로 발급, 무료면 모달 표시 */
   const handlePublish = async () => {
     if (currentPlan === "starter") {
       setShowPricingInChat(true);
       return;
     }
-    // 유료 플랜: 바로 발급 시도
     if (!siteId) {
       setError("사이트 ID가 없습니다. 다시 시도해 주세요.");
       return;
@@ -113,13 +101,11 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     try {
       await publishSite(siteId);
       setPublishSuccess(true);
-      // 발행 성공 → 대시보드로 리다이렉트
       setTimeout(() => {
         onClose();
-        window.location.href = "/";
+        window.location.href = "/dashboard";
       }, 1500);
     } catch (err: unknown) {
-      // 403이면 한도 초과 → 업그레이드 모달 표시
       if (err && typeof err === "object" && "response" in err) {
         const response = (err as { response: Response }).response;
         if (response.status === 403) {
@@ -140,37 +126,31 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     }
   };
 
-  /** 업그레이드 성공 후 플랜 상태 갱신 */
   const handleUpgradeSuccess = () => {
     getSubscriptionStatus()
       .then((status) => setCurrentPlan(status.plan))
-      .catch(() => {
-        api.get("api/v1/auth/me").json<{ plan: "starter" | "pro" | "enterprise" }>()
-          .then((user) => setCurrentPlan(user.plan))
-          .catch(() => {});
-      });
+      .catch(() => {});
   };
 
   if (!isOpen) return null;
 
   const progress = getProgress(phase);
 
-  // 구조 선택 완료 → 다음 단계
   const handleStructureNext = () => {
     if (selectedStructure) setPhase("template");
   };
 
-  // 템플릿 선택 완료 → 대화 단계 + 백엔드 호출
   const handleTemplateNext = async () => {
     if (!selectedTemplate || !selectedStructure) return;
     setLoading(true);
     setError("");
     try {
-      // 사이트의 구조/템플릿 저장
       if (siteId) {
-        await api.patch(`api/v1/sites/${siteId}/onboarding/structure`, {
-          json: { structure: selectedStructure, template_id: selectedTemplate },
-        }).json();
+        await api
+          .patch(`api/v1/sites/${siteId}/onboarding/structure`, {
+            json: { structure: selectedStructure, template_id: selectedTemplate },
+          })
+          .json();
       }
       setPhase("conversation");
     } catch {
@@ -180,7 +160,6 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     }
   };
 
-  // 대화 완료 → 온보딩 + Contract + 프리뷰 일괄 실행
   const handleConversationComplete = async () => {
     const id = siteId || propSiteId;
     if (!id) {
@@ -190,20 +169,13 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setLoading(true);
     setError("");
     try {
-      // 온보딩 데이터 저장
       await api.patch(`api/v1/sites/${id}/onboarding/business`, { json: { business_name: businessName || "테스트 업체" } }).json();
       await api.patch(`api/v1/sites/${id}/onboarding/industry`, { json: { industry: "한의원", job_module: "medical" } }).json();
-      await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: services ? services.split(",").map(s => s.trim()) : ["서비스1"] } }).json();
+      await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: services ? services.split(",").map((s) => s.trim()) : ["서비스1"] } }).json();
       await api.patch(`api/v1/sites/${id}/onboarding/contact`, { json: { phone: phone || "02-1234-5678", email: "", address: "", hours: "" } }).json();
       await api.patch(`api/v1/sites/${id}/onboarding/legal`, { json: { business_reg_number: "123-45-67890" } }).json();
-
-      // 온보딩 완료
       await api.post(`api/v1/sites/${id}/onboarding/complete`).json();
-
-      // Contract 생성
       await api.post(`api/v1/sites/${id}/contract`).json();
-
-      // 프리뷰 생성
       const preview = await api.post(`api/v1/sites/${id}/preview`).json();
       setPreviewData(preview as Record<string, unknown>);
       setPhase("preview");
@@ -216,35 +188,55 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[var(--surface-overlay)] backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-[90vw] h-[85vh] max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex">
-
+      <div className="relative flex h-[85vh] w-[90vw] max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* 좌측: 진행 상황 */}
-        <div className="w-48 bg-gray-50 border-r border-gray-200 p-4 flex flex-col">
+        <div className="flex w-48 flex-none flex-col border-r border-gray-200 bg-gray-50 p-4">
           <div className="mb-4">
-            <span className="text-sm font-bold text-gray-900">HEZO</span>
-            <p className="text-[10px] text-gray-500 mt-1">사이트 만들기</p>
+            <span className="font-display text-sm font-bold text-gray-900">HEZO</span>
+            <p className="mt-1 text-[10px] text-gray-500">사이트 만들기</p>
           </div>
-          <div className="flex-1 space-y-2">
+          <div className="flex flex-1 flex-col gap-2">
             {progress.map((item) => (
               <div key={item.key} className="flex items-center gap-2">
-                {item.status === "done" && <span className="w-4 h-4 rounded-full bg-green-500 text-white flex items-center justify-center text-[9px]">✓</span>}
-                {item.status === "active" && <span className="w-4 h-4 rounded-full bg-green-500 text-white flex items-center justify-center text-[9px] animate-pulse">●</span>}
-                {item.status === "pending" && <span className="w-4 h-4 rounded-full border border-gray-300"></span>}
-                <span className={`text-[11px] ${item.status === "active" ? "text-green-700 font-medium" : item.status === "done" ? "text-gray-600" : "text-gray-400"}`}>
+                {item.status === "done" && (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-white">
+                    <Icon name="check" size={10} />
+                  </span>
+                )}
+                {item.status === "active" && (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                  </span>
+                )}
+                {item.status === "pending" && (
+                  <span className="h-4 w-4 rounded-full border border-gray-300" />
+                )}
+                <span
+                  className={cn(
+                    "text-[11px]",
+                    item.status === "active"
+                      ? "font-medium text-primary-700"
+                      : item.status === "done"
+                        ? "text-gray-600"
+                        : "text-gray-400",
+                  )}
+                >
                   {item.label}
                 </span>
               </div>
             ))}
           </div>
-          {siteId && <p className="text-[8px] text-gray-400 pt-2 border-t">ID: {siteId.slice(0, 8)}...</p>}
+          {siteId && (
+            <p className="border-t pt-2 text-[8px] text-gray-400">ID: {siteId.slice(0, 8)}...</p>
+          )}
         </div>
 
         {/* 중앙: 메인 */}
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+        <div className="flex flex-1 flex-col">
+          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
             <span className="text-sm text-gray-500">
               {phase === "start" && "새 사이트 만들기"}
               {phase === "structure" && "1단계: 구조 선택"}
@@ -252,64 +244,108 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
               {phase === "conversation" && "3단계: 정보 입력"}
               {phase === "preview" && "프리뷰 완성!"}
             </span>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+            <button onClick={onClose} className="text-gray-400 transition-colors hover:text-gray-600">
+              <Icon name="x" size={18} />
+            </button>
           </div>
 
-          {error && <div className="mx-6 mt-3 p-2 bg-red-50 text-red-600 text-xs rounded-lg">{error}</div>}
+          {error && (
+            <div className="mx-6 mt-3 rounded-lg bg-error-50 p-2 text-xs text-error-600">{error}</div>
+          )}
 
           <div className="flex-1 overflow-y-auto p-6">
             {/* 시작 */}
             {phase === "start" && (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="text-3xl mb-4">🚀</div>
-                <h2 className="text-lg font-bold mb-2">사이트를 만들어 볼까요?</h2>
-                <p className="text-sm text-gray-500 mb-6">5분 대화로 AI 최적화 홈페이지를 생성합니다.</p>
-                <button onClick={() => setPhase("structure")} className="px-8 py-3 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700">
-                  시작하기 →
-                </button>
+              <div className="flex h-full flex-col items-center justify-center text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50">
+                  <Icon name="rocket" size={30} className="text-primary-600" />
+                </div>
+                <h2 className="mb-2 font-display text-lg font-bold text-gray-900">사이트를 만들어 볼까요?</h2>
+                <p className="mb-6 text-sm text-gray-500">5분 대화로 AI 최적화 홈페이지를 생성합니다.</p>
+                <Button
+                  hierarchy="primary"
+                  size="xl"
+                  onClick={() => setPhase("structure")}
+                  iconTrailing={<Icon name="arrow-right" size={18} />}
+                >
+                  시작하기
+                </Button>
               </div>
             )}
 
             {/* 구조 선택 */}
             {phase === "structure" && (
               <div>
-                <h2 className="text-base font-bold mb-4">사이트 구조를 선택하세요</h2>
-                <div className="grid grid-cols-3 gap-4 mb-5">
+                <h2 className="mb-4 font-display text-base font-bold text-gray-900">사이트 구조를 선택하세요</h2>
+                <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
                   {structureOptions.map((opt) => (
-                    <div key={opt.id} onClick={() => setSelectedStructure(opt.id)}
-                      className={`cursor-pointer rounded-xl p-4 border-2 text-center ${selectedStructure === opt.id ? "border-green-600 bg-green-50" : "border-gray-200 hover:border-gray-300"}`}>
-                      {opt.recommended && <span className="text-[8px] bg-green-600 text-white px-2 py-0.5 rounded-full">추천</span>}
-                      <span className="text-2xl block my-2">{opt.icon}</span>
-                      <h3 className="font-bold text-sm">{opt.label}</h3>
-                      <p className="text-[10px] text-gray-500 mt-1">{opt.desc}</p>
+                    <div
+                      key={opt.id}
+                      onClick={() => setSelectedStructure(opt.id)}
+                      className={cn(
+                        "cursor-pointer rounded-xl border-2 p-4 text-center transition-colors",
+                        selectedStructure === opt.id
+                          ? "border-primary-500 bg-primary-50"
+                          : "border-gray-200 hover:border-gray-300",
+                      )}
+                    >
+                      {opt.recommended && (
+                        <Badge color="brand" size="sm">추천</Badge>
+                      )}
+                      <span className="mx-auto my-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50">
+                        <Icon name={opt.icon} size={20} className="text-primary-600" />
+                      </span>
+                      <h3 className="text-sm font-bold text-gray-900">{opt.label}</h3>
+                      <p className="mt-1 text-[10px] text-gray-500">{opt.desc}</p>
                     </div>
                   ))}
                 </div>
-                {selectedStructure && <button onClick={handleStructureNext} className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">다음 →</button>}
+                {selectedStructure && (
+                  <Button
+                    hierarchy="primary"
+                    size="lg"
+                    onClick={handleStructureNext}
+                    className="w-full"
+                    iconTrailing={<Icon name="arrow-right" size={18} />}
+                  >
+                    다음
+                  </Button>
+                )}
               </div>
             )}
 
             {/* 템플릿 선택 */}
             {phase === "template" && selectedStructure && (
               <div>
-                <h2 className="text-base font-bold mb-4">템플릿을 선택하세요</h2>
-                <div className="grid grid-cols-3 gap-4 mb-5">
+                <h2 className="mb-4 font-display text-base font-bold text-gray-900">템플릿을 선택하세요</h2>
+                <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
                   {(templateOptions[selectedStructure] || []).map((tpl) => (
-                    <div key={tpl.id} className={`rounded-xl border-2 overflow-hidden ${selectedTemplate === tpl.id ? "border-green-600" : "border-gray-200 hover:border-gray-300"}`}>
+                    <div
+                      key={tpl.id}
+                      className={cn(
+                        "overflow-hidden rounded-xl border-2 transition-colors",
+                        selectedTemplate === tpl.id ? "border-primary-500" : "border-gray-200 hover:border-gray-300",
+                      )}
+                    >
                       <div onClick={() => setSelectedTemplate(tpl.id)} className="cursor-pointer">
                         {tpl.previewUrl ? (
                           <div className="relative h-24 overflow-hidden">
-                            <iframe src={tpl.previewUrl} className="w-[200%] h-[200%] pointer-events-none origin-top-left scale-[0.5]" />
+                            <iframe src={tpl.previewUrl} className="pointer-events-none h-[200%] w-[200%] origin-top-left scale-[0.5]" />
                             <button
-                              onClick={(e) => { e.stopPropagation(); setPreviewModalUrl(tpl.previewUrl); }}
-                              className="absolute top-1 right-1 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center text-xs hover:bg-white shadow"
-                            >🔍</button>
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewModalUrl(tpl.previewUrl);
+                              }}
+                              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/80 shadow hover:bg-white"
+                            >
+                              <Icon name="search" size={12} className="text-gray-600" />
+                            </button>
                           </div>
                         ) : (
-                          <div className="h-20 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">준비 중</div>
+                          <div className="flex h-20 items-center justify-center bg-gray-100 text-xs text-gray-400">준비 중</div>
                         )}
                         <div className="p-3">
-                          <h4 className="font-medium text-sm">{tpl.name}</h4>
+                          <h4 className="text-sm font-medium text-gray-900">{tpl.name}</h4>
                           <p className="text-[10px] text-gray-500">{tpl.desc}</p>
                         </div>
                       </div>
@@ -317,76 +353,87 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                   ))}
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={() => setPhase("structure")} className="px-4 py-2.5 border text-gray-600 rounded-lg text-sm">← 뒤로</button>
-                  {selectedTemplate && <button onClick={handleTemplateNext} disabled={loading} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
-                    {loading ? "저장 중..." : "다음 →"}
-                  </button>}
+                  <Button hierarchy="secondary" size="lg" onClick={() => setPhase("structure")}>← 뒤로</Button>
+                  {selectedTemplate && (
+                    <Button
+                      hierarchy="primary"
+                      size="lg"
+                      onClick={handleTemplateNext}
+                      disabled={loading}
+                      className="flex-1"
+                    >
+                      {loading ? "저장 중..." : "다음 →"}
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* 대화 (하드코딩 폼) */}
+            {/* 대화 */}
             {phase === "conversation" && (
-              <div className="max-w-md space-y-4">
-                <p className="text-sm text-gray-600 mb-4">아래 정보를 입력하면 바로 프리뷰가 생성됩니다.</p>
+              <div className="flex max-w-md flex-col gap-4">
+                <p className="text-sm text-gray-600">아래 정보를 입력하면 바로 프리뷰가 생성됩니다.</p>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">업체명</label>
-                  <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="예: 바른한의원" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <label className="mb-1 block text-xs text-gray-500">업체명</label>
+                  <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="예: 바른한의원" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">핵심 서비스 (쉼표 구분)</label>
-                  <input value={services} onChange={(e) => setServices(e.target.value)} placeholder="예: 침 치료, 추나요법, 한약 처방" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <label className="mb-1 block text-xs text-gray-500">핵심 서비스 (쉼표 구분)</label>
+                  <Input value={services} onChange={(e) => setServices(e.target.value)} placeholder="예: 침 치료, 추나요법, 한약 처방" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">전화번호</label>
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="예: 02-123-4567" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <label className="mb-1 block text-xs text-gray-500">전화번호</label>
+                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="예: 02-123-4567" />
                 </div>
-                <button onClick={handleConversationComplete} disabled={loading} className="w-full py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                <Button
+                  hierarchy="primary"
+                  size="lg"
+                  onClick={handleConversationComplete}
+                  disabled={loading}
+                  className="w-full"
+                >
                   {loading ? "프리뷰 생성 중..." : "프리뷰 생성하기 →"}
-                </button>
+                </Button>
               </div>
             )}
 
             {/* 프리뷰 */}
             {phase === "preview" && (
               <div className="text-center">
-                <div className="text-3xl mb-4">🎉</div>
-                <h2 className="text-lg font-bold mb-2">프리뷰가 생성되었습니다!</h2>
-                <p className="text-sm text-gray-500 mb-6">Contract JSON 기반으로 사이트 구조가 만들어졌습니다.</p>
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50">
+                  <Icon name="sparkles" size={30} className="text-primary-600" />
+                </div>
+                <h2 className="mb-2 font-display text-lg font-bold text-gray-900">프리뷰가 생성되었습니다!</h2>
+                <p className="mb-6 text-sm text-gray-500">Contract JSON 기반으로 사이트 구조가 만들어졌습니다.</p>
 
                 {previewData && (
-                  <div className="text-left bg-gray-900 text-green-400 p-4 rounded-lg text-[10px] font-mono overflow-auto max-h-60 mb-4">
+                  <div className="mb-4 max-h-60 overflow-auto rounded-lg bg-gray-900 p-4 text-left font-mono text-[10px] text-primary-300">
                     <pre>{JSON.stringify(previewData, null, 2)}</pre>
                   </div>
                 )}
 
-                <div className="flex gap-3 justify-center">
-                  <button onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-lg text-sm">닫기</button>
-                  <button
-                    onClick={handlePublish}
-                    disabled={publishing}
-                    className="px-6 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:bg-green-400 disabled:cursor-wait"
-                  >
+                <div className="flex justify-center gap-3">
+                  <Button hierarchy="secondary" size="md" onClick={onClose}>닫기</Button>
+                  <Button hierarchy="primary" size="md" onClick={handlePublish} disabled={publishing}>
                     {publishing ? "발행 중..." : "발행하기"}
-                  </button>
+                  </Button>
                 </div>
 
-                {/* 발행 성공 메시지 */}
                 {publishSuccess && (
-                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-sm text-green-700 font-medium">✅ 사이트가 성공적으로 발행되었습니다!</p>
-                    <p className="text-xs text-green-600 mt-1">잠시 후 대시보드로 이동합니다...</p>
+                  <div className="mt-4 rounded-lg border border-success-200 bg-success-50 p-3">
+                    <p className="inline-flex items-center gap-1.5 text-sm font-medium text-success-700">
+                      <Icon name="circle-check-big" size={16} /> 사이트가 성공적으로 발행되었습니다!
+                    </p>
+                    <p className="mt-1 text-xs text-success-600">잠시 후 대시보드로 이동합니다...</p>
                   </div>
                 )}
 
-                {/* 결제 모달 — 사이드바 업그레이드와 동일한 3가지 플랜 디자인 */}
                 <PricingModal
                   isOpen={showPricingInChat}
                   onClose={() => setShowPricingInChat(false)}
                   onSelect={(plan) => {
                     setCurrentPlan(plan as "starter" | "pro" | "enterprise");
                     setShowPricingInChat(false);
-                    // 업그레이드 성공 후 자동으로 발행 시도
                     if (siteId && plan !== "starter") {
                       setPublishing(true);
                       setError("");
@@ -395,7 +442,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                           setPublishSuccess(true);
                           setTimeout(() => {
                             onClose();
-                            window.location.href = "/";
+                            window.location.href = "/dashboard";
                           }, 1500);
                         })
                         .catch((err: unknown) => {
@@ -424,14 +471,16 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
 
       {/* 템플릿 확대 프리뷰 모달 */}
       {previewModalUrl && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60" onClick={() => setPreviewModalUrl(null)} />
-          <div className="relative w-[80vw] h-[85vh] bg-white rounded-2xl overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
+          <div className="relative h-[85vh] w-[80vw] overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-3">
               <span className="text-sm text-gray-600">템플릿 미리보기</span>
-              <button onClick={() => setPreviewModalUrl(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <button onClick={() => setPreviewModalUrl(null)} className="text-gray-400 transition-colors hover:text-gray-600">
+                <Icon name="x" size={18} />
+              </button>
             </div>
-            <iframe src={previewModalUrl} className="w-full h-[calc(100%-48px)]" />
+            <iframe src={previewModalUrl} className="h-[calc(100%-48px)] w-full" />
           </div>
         </div>
       )}

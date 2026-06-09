@@ -12,6 +12,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // 인증 페이지 및 이메일 인증 페이지는 가드 스킵
     if (pathname.startsWith("/auth/") || pathname.startsWith("/email-verification")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setChecked(true);
       return;
     }
@@ -32,7 +33,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!checked) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
       </div>
     );
   }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { publishSite } from "@/lib/api";
 import PricingModal from "@/components/chat/PricingModal";
+import { cn } from "@/lib/utils";
 
 interface PublishButtonProps {
   siteId: string;
@@ -26,26 +27,20 @@ export default function PublishButton({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const isDisabled = siteStatus !== "preview_ready";
-  const canPublish =
-    (userPlan === "pro" || userPlan === "enterprise") && sitesUsed < sitesLimit;
 
   const handlePublish = async () => {
-    // Starter 또는 한도 초과 → PricingModal 표시
     if (userPlan === "starter" || sitesUsed >= sitesLimit) {
       setShowPricingModal(true);
       return;
     }
-
-    // 유료 플랜 + 한도 미달 → 즉시 POST /publish 호출
     setIsLoading(true);
     try {
       await publishSite(siteId);
       setSuccessMessage("사이트가 성공적으로 발급되었습니다!");
       setTimeout(() => {
-        router.push("/");
+        router.push("/dashboard");
       }, 3000);
     } catch (error: unknown) {
-      // 403 응답 시 PricingModal 자동 표시
       if (
         error &&
         typeof error === "object" &&
@@ -62,7 +57,6 @@ export default function PublishButton({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handlePlanSelect = (_plan: string) => {
     setShowPricingModal(false);
-    // 업그레이드 로직은 PricingModal 내부에서 처리
   };
 
   return (
@@ -70,27 +64,22 @@ export default function PublishButton({
       <button
         onClick={handlePublish}
         disabled={isDisabled || isLoading}
-        className={`px-6 py-3 rounded-lg text-sm font-medium transition-colors ${
+        className={cn(
+          "rounded-md px-6 py-3 text-sm font-semibold transition-colors",
           isDisabled
-            ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+            ? "cursor-not-allowed bg-gray-200 text-gray-400"
             : isLoading
-            ? "bg-green-400 text-white cursor-wait"
-            : canPublish
-            ? "bg-green-600 text-white hover:bg-green-700"
-            : "bg-green-600 text-white hover:bg-green-700"
-        }`}
+              ? "cursor-wait bg-primary-400 text-white"
+              : "bg-primary-600 text-white hover:bg-primary-700",
+        )}
       >
-        {isLoading
-          ? "발급 중..."
-          : isDisabled
-          ? "프리뷰 준비 중"
-          : "사이트 발급하기"}
+        {isLoading ? "발급 중..." : isDisabled ? "프리뷰 준비 중" : "사이트 발급하기"}
       </button>
 
       {successMessage && (
-        <div className="mt-3 px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+        <div className="mt-3 rounded-lg border border-success-200 bg-success-50 px-4 py-2 text-sm text-success-700">
           {successMessage}
-          <span className="block text-xs text-green-500 mt-1">
+          <span className="mt-1 block text-xs text-success-500">
             3초 후 대시보드로 이동합니다...
           </span>
         </div>
