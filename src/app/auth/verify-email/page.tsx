@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -9,33 +9,6 @@ export default function VerifyEmailPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // 메일 발송 후 주기적으로 인증 상태 체크 (5초마다)
-  useEffect(() => {
-    if (!sent) return;
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await api.post("api/v1/auth/email-verification/request").json<{ expires_at: string }>();
-        // 아직 미인증 → 계속 대기 (이미 인증됐으면 409 에러로 빠짐)
-        void res;
-      } catch (err: unknown) {
-        if (err && typeof err === "object" && "response" in err) {
-          const response = (err as { response: Response }).response;
-          if (response.status === 409) {
-            // EMAIL_ALREADY_VERIFIED → 인증 완료!
-            if (pollRef.current) clearInterval(pollRef.current);
-            router.push("/");
-          }
-        }
-      }
-    }, 5000);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [sent, router]);
 
   const handleRequestVerification = async () => {
     setLoading(true);
@@ -123,6 +96,23 @@ export default function VerifyEmailPage() {
                 이메일 수신함을 확인하고 인증 링크를 클릭해 주세요.
               </p>
             </div>
+
+            <button
+              onClick={async () => {
+                try {
+                  // GET /sites로 인증된 상태인지 확인 (인증 안 됐으면 다른 에러)
+                  const sites = await api.get("api/v1/sites").json<unknown[]>();
+                  // 성공하면 인증된 상태 → 대시보드로 이동
+                  void sites;
+                  router.push("/");
+                } catch {
+                  setError("아직 이메일 인증이 완료되지 않았습니다. 이메일의 인증 링크를 클릭해 주세요.");
+                }
+              }}
+              className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+            >
+              인증 완료 확인 → 대시보드로 이동
+            </button>
 
             <button
               onClick={handleRequestVerification}
