@@ -125,11 +125,16 @@ export default function LoginPage() {
             💬 카카오로 시작하기
           </button>
           <button
-            disabled
-            className="w-full py-3 bg-[#03C75A] text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 opacity-50 cursor-not-allowed"
+            onClick={() => {
+              const NAVER_CLIENT_ID = process.env.NEXT_PUBLIC_NAVER_CLIENT_ID || "";
+              const REDIRECT_URI = `${window.location.origin}/oauth/naver/callback`;
+              const state = Math.random().toString(36).substring(2);
+              const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?client_id=${NAVER_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${state}`;
+              window.location.href = naverAuthUrl;
+            }}
+            className="w-full py-3 bg-[#03C75A] text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 hover:bg-[#02b351] transition-colors"
           >
             <span className="font-bold">N</span> 네이버로 시작하기
-            <span className="text-[9px] text-green-200">(준비 중)</span>
           </button>
         </div>
 
