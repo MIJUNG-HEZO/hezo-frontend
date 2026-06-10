@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { Icon } from "@/components/ui/Icon";
+import { Button } from "@/components/ui/Button";
 
 export default function VerifyEmailPage() {
   const router = useRouter();
@@ -21,17 +23,15 @@ export default function VerifyEmailPage() {
 
       setSent(true);
 
-      // 개발 환경에서는 verification_url이 반환됨 → 콘솔에 출력
       if (res.verification_url) {
-        console.log("📧 이메일 인증 URL (개발용):", res.verification_url);
+        console.log("이메일 인증 URL (개발용):", res.verification_url);
       }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         try {
           const body = await (err as { response: Response }).response.json();
           if (body.error?.code === "EMAIL_ALREADY_VERIFIED") {
-            // 이미 인증됨 → 대시보드로 이동
-            router.push("/");
+            router.push("/dashboard");
             return;
           }
           setError(body.error?.message || body.detail || "인증 메일 발송에 실패했습니다");
@@ -47,94 +47,73 @@ export default function VerifyEmailPage() {
   };
 
   const handleSkip = () => {
-    router.push("/");
+    router.push("/dashboard");
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl p-10 border border-gray-200 w-[440px] shadow-sm text-center">
-        {/* 아이콘 */}
-        <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-green-100 flex items-center justify-center text-3xl">
-          📧
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <div className="w-[440px] max-w-full rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-primary-100 bg-primary-50">
+          <Icon name="mail" size={28} className="text-primary-600" />
         </div>
 
-        <h1 className="text-xl font-bold text-gray-900 mb-2">이메일 인증이 필요합니다</h1>
-        <p className="text-sm text-gray-500 mb-6">
-          사이트 발행 및 결제를 위해 이메일 인증을 완료해 주세요.
-          <br />
-          인증 메일을 보내드립니다.
+        <h1 className="mb-2 font-display text-xl font-bold text-gray-900">이메일 인증이 필요합니다</h1>
+        <p className="mb-6 text-sm text-gray-500 [word-break:keep-all]">
+          사이트 발행 및 결제를 위해 이메일 인증을 완료해 주세요. 인증 메일을 보내드립니다.
         </p>
 
-        {/* 에러 */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+          <div className="mb-4 rounded-lg border border-error-200 bg-error-50 px-3 py-3 text-xs text-error-600">
             {error}
           </div>
         )}
 
         {!sent ? (
-          <>
-            <button
+          <div className="flex flex-col gap-3">
+            <Button
+              hierarchy="primary"
+              size="lg"
               onClick={handleRequestVerification}
               disabled={loading}
-              className="w-full py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 disabled:opacity-50 mb-3"
+              className="w-full"
             >
               {loading ? "발송 중..." : "인증 메일 보내기"}
-            </button>
-            <button
-              onClick={handleSkip}
-              className="w-full py-3 border border-gray-200 text-gray-500 rounded-lg text-sm hover:bg-gray-50"
-            >
+            </Button>
+            <Button hierarchy="secondary" size="lg" onClick={handleSkip} className="w-full">
               나중에 하기
-            </button>
-          </>
+            </Button>
+          </div>
         ) : (
-          <div className="space-y-4">
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-700 font-medium">✅ 인증 메일이 발송되었습니다</p>
-              <p className="text-xs text-green-600 mt-1">
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg border border-success-200 bg-success-50 p-4 text-left">
+              <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-success-700">
+                <Icon name="circle-check-big" size={16} /> 인증 메일이 발송되었습니다
+              </p>
+              <p className="mt-1 text-xs text-success-600">
                 이메일 수신함을 확인하고 인증 링크를 클릭해 주세요.
               </p>
             </div>
-
-            <button
-              onClick={async () => {
-                try {
-                  // GET /sites로 인증된 상태인지 확인 (인증 안 됐으면 다른 에러)
-                  const sites = await api.get("api/v1/sites").json<unknown[]>();
-                  // 성공하면 인증된 상태 → 대시보드로 이동
-                  void sites;
-                  router.push("/");
-                } catch {
-                  setError("아직 이메일 인증이 완료되지 않았습니다. 이메일의 인증 링크를 클릭해 주세요.");
-                }
-              }}
-              className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
-            >
-              인증 완료 확인 → 대시보드로 이동
-            </button>
-
-            <button
+            <Button
+              hierarchy="secondary"
+              size="md"
               onClick={handleRequestVerification}
               disabled={loading}
-              className="w-full py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+              className="w-full"
             >
               {loading ? "재발송 중..." : "인증 메일 재발송"}
-            </button>
-
+            </Button>
             <button
               onClick={handleSkip}
-              className="w-full py-2.5 text-gray-400 text-xs hover:text-gray-600"
+              className="text-xs text-gray-400 transition-colors hover:text-gray-600"
             >
               나중에 인증하기 →
             </button>
           </div>
         )}
 
-        <p className="text-[10px] text-gray-400 mt-6">
-          인증하지 않아도 사이트 생성과 프리뷰는 이용 가능합니다.
-          <br />
-          발행 및 결제 시 이메일 인증이 필요합니다.
+        <p className="mt-6 text-[10px] text-gray-400 [word-break:keep-all]">
+          인증하지 않아도 사이트 생성과 프리뷰는 이용 가능합니다. 발행 및 결제 시 이메일
+          인증이 필요합니다.
         </p>
       </div>
     </div>

@@ -6,6 +6,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api } from "@/lib/api";
+import { startOAuthLogin } from "@/lib/oauth";
+import { Logo } from "@/components/landing/Logo";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
 
 const loginSchema = z.object({
   email: z.string().email("올바른 이메일을 입력해 주세요"),
@@ -27,13 +32,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const loginForm = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-  });
-
-  const signupForm = useForm<SignupFormData>({
-    resolver: zodResolver(signupSchema),
-  });
+  const loginForm = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) });
+  const signupForm = useForm<SignupFormData>({ resolver: zodResolver(signupSchema) });
 
   const handleSubmit = async (data: LoginFormData | SignupFormData) => {
     setError("");
@@ -41,35 +41,17 @@ export default function LoginPage() {
 
     try {
       if (mode === "signup") {
-        // 1. 회원가입 (토큰 반환 안 함 — 유저 정보만 반환)
-        const signupRes = await api.post("api/v1/auth/signup", { json: data }).json<{
-          id: string;
-          created_at: string;
-          updated_at: string;
-        }>();
+        await api.post("api/v1/auth/signup", { json: data }).json();
 
-        // 재가입 유저 감지 (created_at이 오래된 경우)
-        const createdAt = new Date(signupRes.created_at);
-        const now = new Date();
-        const isReturningUser = (now.getTime() - createdAt.getTime()) > 60000; // 1분 이상 차이
-
-        // 2. 회원가입 성공 후 자동 로그인
         const loginRes: { access_token: string } = await api
           .post("api/v1/auth/login", { json: { email: data.email, password: data.password } })
           .json();
 
         localStorage.setItem("access_token", loginRes.access_token);
 
-        if (isReturningUser) {
-          // 재가입 유저 → 대시보드에 환영 메시지 표시
-          localStorage.setItem("hezo_welcome_back", "true");
-        }
-
-        // 3. 이메일 인증 페이지로 이동
         router.push("/auth/verify-email");
         return;
       } else {
-        // 로그인
         const res: { access_token: string } = await api
           .post("api/v1/auth/login", { json: { email: data.email, password: data.password } })
           .json();
@@ -77,13 +59,11 @@ export default function LoginPage() {
         localStorage.setItem("access_token", res.access_token);
       }
 
-      // 메인 페이지로 이동
-      router.push("/");
+      router.push("/dashboard");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         try {
           const body = await (err as { response: Response }).response.json();
-          // 백엔드 팀 에러 형식: { error: { code, message } } 또는 { detail: "..." }
           if (body.error?.message) {
             setError(body.error.message);
           } else if (body.detail) {
@@ -109,44 +89,46 @@ export default function LoginPage() {
     signupForm.reset();
   };
 
+  const handleOAuth = (provider: "kakao" | "naver") => {
+    setError("");
+    const started = startOAuthLogin(provider);
+    if (!started) {
+      const envKey = provider === "kakao" ? "NEXT_PUBLIC_KAKAO_CLIENT_ID" : "NEXT_PUBLIC_NAVER_CLIENT_ID";
+      setError(`${provider === "kakao" ? "카카오" : "네이버"} 로그인 키가 설정되지 않았습니다 (${envKey}).`);
+    }
+  };
+
+  const isLogin = mode === "login";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl p-10 border border-gray-200 w-[400px] shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <div className="w-[400px] max-w-full rounded-2xl border border-gray-200 bg-white p-10 shadow-sm">
         {/* 로고 */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">HEZO</h1>
-          <p className="text-sm text-gray-500 mt-2">AI 검색 친화 홈페이지를 만들어 보세요</p>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <Logo />
+          <p className="mt-3 text-sm text-gray-500">AI 검색 친화 홈페이지를 만들어 보세요</p>
         </div>
 
-        {/* 에러 메시지 */}
+        {/* 에러 */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+          <div className="mb-4 rounded-lg border border-error-200 bg-error-50 px-3 py-3 text-xs text-error-600">
             {error}
           </div>
         )}
 
-        {/* 소셜 로그인 버튼 (나중에 구현) */}
-        <div className="space-y-2.5 mb-5">
+        {/* 소셜 로그인 */}
+        <div className="mb-5 flex flex-col gap-2.5">
           <button
-            onClick={() => {
-              const KAKAO_CLIENT_ID = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID || "";
-              const REDIRECT_URI = `${window.location.origin}/oauth/kakao/callback`;
-              const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`;
-              window.location.href = kakaoAuthUrl;
-            }}
-            className="w-full py-3 bg-[#FEE500] text-gray-900 rounded-lg font-medium text-sm flex items-center justify-center gap-2 hover:bg-[#FDD800] transition-colors"
+            type="button"
+            onClick={() => handleOAuth("kakao")}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[#FEE500] py-3 text-sm font-medium text-gray-900 transition-opacity hover:opacity-90"
           >
-            💬 카카오로 시작하기
+            <Icon name="message-circle" size={16} /> 카카오로 시작하기
           </button>
           <button
-            onClick={() => {
-              const NAVER_CLIENT_ID = process.env.NEXT_PUBLIC_NAVER_CLIENT_ID || "";
-              const REDIRECT_URI = `${window.location.origin}/oauth/naver/callback`;
-              const state = Math.random().toString(36).substring(2);
-              const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?client_id=${NAVER_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${state}`;
-              window.location.href = naverAuthUrl;
-            }}
-            className="w-full py-3 bg-[#03C75A] text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 hover:bg-[#02b351] transition-colors"
+            type="button"
+            onClick={() => handleOAuth("naver")}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[#03C75A] py-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             <span className="font-bold">N</span> 네이버로 시작하기
           </button>
@@ -154,85 +136,81 @@ export default function LoginPage() {
 
         {/* 구분선 */}
         <div className="relative my-5">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-          <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400">이메일로 계속</span></div>
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs text-gray-400">이메일로 계속</span>
+          </div>
         </div>
 
-        {/* 이메일 로그인/회원가입 폼 */}
-        {mode === "login" ? (
-          <form onSubmit={loginForm.handleSubmit(handleSubmit)} className="space-y-3">
+        {/* 폼 */}
+        {isLogin ? (
+          <form onSubmit={loginForm.handleSubmit(handleSubmit)} className="flex flex-col gap-3">
             <div>
-              <input
+              <Input
                 type="email"
                 placeholder="이메일"
+                invalid={!!loginForm.formState.errors.email}
                 {...loginForm.register("email")}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               {loginForm.formState.errors.email && (
-                <p className="mt-1 text-xs text-red-500">{loginForm.formState.errors.email.message}</p>
+                <p className="mt-1 text-xs text-error-500">{loginForm.formState.errors.email.message}</p>
               )}
             </div>
             <div>
-              <input
+              <Input
                 type="password"
                 placeholder="비밀번호"
+                invalid={!!loginForm.formState.errors.password}
                 {...loginForm.register("password")}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               {loginForm.formState.errors.password && (
-                <p className="mt-1 text-xs text-red-500">{loginForm.formState.errors.password.message}</p>
+                <p className="mt-1 text-xs text-error-500">{loginForm.formState.errors.password.message}</p>
               )}
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 disabled:opacity-50"
-            >
+            <Button type="submit" hierarchy="primary" size="lg" disabled={loading} className="w-full">
               {loading ? "처리 중..." : "로그인"}
-            </button>
+            </Button>
           </form>
         ) : (
-          <form onSubmit={signupForm.handleSubmit(handleSubmit)} className="space-y-3">
+          <form onSubmit={signupForm.handleSubmit(handleSubmit)} className="flex flex-col gap-3">
             <div>
-              <input
+              <Input
                 type="text"
                 placeholder="이름"
+                invalid={!!signupForm.formState.errors.name}
                 {...signupForm.register("name")}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               {signupForm.formState.errors.name && (
-                <p className="mt-1 text-xs text-red-500">{signupForm.formState.errors.name.message}</p>
+                <p className="mt-1 text-xs text-error-500">{signupForm.formState.errors.name.message}</p>
               )}
             </div>
             <div>
-              <input
+              <Input
                 type="email"
                 placeholder="이메일"
+                invalid={!!signupForm.formState.errors.email}
                 {...signupForm.register("email")}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               {signupForm.formState.errors.email && (
-                <p className="mt-1 text-xs text-red-500">{signupForm.formState.errors.email.message}</p>
+                <p className="mt-1 text-xs text-error-500">{signupForm.formState.errors.email.message}</p>
               )}
             </div>
             <div>
-              <input
+              <Input
                 type="password"
                 placeholder="비밀번호 (8자 이상)"
+                invalid={!!signupForm.formState.errors.password}
                 {...signupForm.register("password")}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               {signupForm.formState.errors.password && (
-                <p className="mt-1 text-xs text-red-500">{signupForm.formState.errors.password.message}</p>
+                <p className="mt-1 text-xs text-error-500">{signupForm.formState.errors.password.message}</p>
               )}
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 disabled:opacity-50"
-            >
+            <Button type="submit" hierarchy="primary" size="lg" disabled={loading} className="w-full">
               {loading ? "처리 중..." : "회원가입"}
-            </button>
+            </Button>
           </form>
         )}
 
@@ -240,9 +218,9 @@ export default function LoginPage() {
         <div className="mt-4 text-center">
           <button
             onClick={switchMode}
-            className="text-xs text-green-600 hover:underline"
+            className="text-xs font-medium text-primary-600 hover:underline"
           >
-            {mode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}
+            {isLogin ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}
           </button>
         </div>
       </div>

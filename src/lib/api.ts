@@ -1,5 +1,11 @@
-import ky, { HTTPError } from "ky";
-import type { SubscriptionStatus, UpgradeResult, MySubscriptionResponse } from "@/types";
+import ky, { isHTTPError, type BeforeErrorHook } from "ky";
+import type {
+  SubscriptionStatus,
+  MySubscriptionResponse,
+  UserResponse,
+  OAuthLoginResponse,
+  BillingCheckoutResponse,
+} from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -8,62 +14,34 @@ function getToken(): string | null {
   return localStorage.getItem("access_token");
 }
 
-function setToken(token: string): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("access_token", token);
-  }
-}
-
-function clearToken(): void {
-  if (typeof window !== "undefined") {
+// 401 시 토큰 제거 및 리다이렉트 (향후 refresh 로직 추가 예정)
+const handle401: BeforeErrorHook = ({ error }) => {
+  if (isHTTPError(error) && error.response.status === 401) {
     localStorage.removeItem("access_token");
-  }
-}
-
-function redirectToLogin(): void {
-  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/auth")) {
-    window.location.href = "/auth/login";
-  }
-}
-
-let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
-
-/** refresh_token Cookie로 새 access_token 발급 */
-async function refreshAccessToken(): Promise<boolean> {
-  if (isRefreshing && refreshPromise) {
-    return refreshPromise;
-  }
-
-  isRefreshing = true;
-  refreshPromise = (async () => {
-    try {
-      console.log("[api] refresh 시도...");
-      const res: { access_token: string } = await ky
-        .post(`${API_BASE_URL}/api/v1/auth/refresh`, {
-          credentials: "include",
-          timeout: 10000,
-        })
-        .json();
-
-      console.log("[api] refresh 성공, 새 토큰 저장");
-      setToken(res.access_token);
-      return true;
-    } catch (e) {
-      console.log("[api] refresh 실패:", e);
-      clearToken();
-      return false;
-    } finally {
-      isRefreshing = false;
-      refreshPromise = null;
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/auth")) {
+      window.location.href = "/auth/login";
     }
-  })();
+  }
+  return error;
+};
 
-  return refreshPromise;
+/** ky HTTPError에서 백엔드 에러 메시지를 추출 (없으면 fallback). */
+export async function getApiErrorMessage(
+  err: unknown,
+  fallback = "요청에 실패했습니다",
+): Promise<string> {
+  if (err && typeof err === "object" && "response" in err) {
+    try {
+      const body = await (err as { response: Response }).response.json();
+      return body?.error?.message ?? body?.message ?? body?.detail ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
 }
 
-/** 기본 ky 인스턴스 (refresh 없이) */
-const baseApi = ky.create({
+export const api = ky.create({
   prefix: API_BASE_URL,
   timeout: 30000,
   credentials: "include",
@@ -76,74 +54,20 @@ const baseApi = ky.create({
         }
       },
     ],
+    beforeError: [handle401],
   },
 });
 
-/**
- * 401 자동 refresh 래퍼 함수
- * 모든 API 호출을 이 함수로 감싸서 사용
- */
-async function fetchWithRefresh<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    if (error instanceof HTTPError && error.response.status === 401) {
-      // auth 경로 자체의 401은 refresh 안 함
-      const url = error.response.url || "";
-      console.log("[api] 401 감지, url:", url);
-      if (url.includes("/auth/")) {
-        throw error;
-      }
-
-      // refresh 시도
-      const success = await refreshAccessToken();
-      if (success) {
-        console.log("[api] refresh 후 재시도");
-        // 새 토큰으로 재시도
-        return await fn();
-      } else {
-        console.log("[api] refresh 실패 → 로그인 리다이렉트");
-        redirectToLogin();
-        throw error;
-      }
-    }
-    throw error;
-  }
-}
-
-/** API 래퍼 - 모든 메서드에 자동 refresh 적용 */
-export const api = {
-  get: (url: string, options?: object) => ({
-    json: <T>() => fetchWithRefresh<T>(() => baseApi.get(url, options).json()),
-    text: () => fetchWithRefresh<string>(() => baseApi.get(url, options).text()),
-  }),
-  post: (url: string, options?: object) => ({
-    json: <T>() => fetchWithRefresh<T>(() => baseApi.post(url, options).json()),
-    text: () => fetchWithRefresh<string>(() => baseApi.post(url, options).text()),
-  }),
-  patch: (url: string, options?: object) => ({
-    json: <T>() => fetchWithRefresh<T>(() => baseApi.patch(url, options).json()),
-    text: () => fetchWithRefresh<string>(() => baseApi.patch(url, options).text()),
-  }),
-  put: (url: string, options?: object) => ({
-    json: <T>() => fetchWithRefresh<T>(() => baseApi.put(url, options).json()),
-    text: () => fetchWithRefresh<string>(() => baseApi.put(url, options).text()),
-  }),
-  delete: (url: string, options?: object) => ({
-    json: <T>() => fetchWithRefresh<T>(() => baseApi.delete(url, options).json()),
-    text: () => fetchWithRefresh<string>(() => baseApi.delete(url, options).text()),
-  }),
-};
-
 // --- Subscription API ---
 
-function mapPlanCode(code: string): "starter" | "pro" | "enterprise" {
-  const map: Record<string, "starter" | "pro" | "enterprise"> = {
-    FREE: "starter",
+// plan_code를 프론트 plan 표시명으로 매핑
+function mapPlanCode(code: string): "free" | "pro" | "max" {
+  const map: Record<string, "free" | "pro" | "max"> = {
+    FREE: "free",
     PRO: "pro",
-    MAX: "enterprise",
+    MAX: "max",
   };
-  return map[code] || "starter";
+  return map[code] || "free";
 }
 
 function getNextPlan(code: string): string | null {
@@ -155,15 +79,54 @@ function getNextPlan(code: string): string | null {
   return map[code] ?? null;
 }
 
+// 프론트 plan 키("free"|"pro"|"max") → 백엔드 plan_code
+function toPlanCode(planKey: string): string {
+  const map: Record<string, string> = {
+    free: "FREE",
+    pro: "PRO",
+    max: "MAX",
+  };
+  return map[planKey.toLowerCase()] ?? planKey.toUpperCase();
+}
+
+// --- Sites API ---
+
+export interface SiteSummary {
+  id: string;
+  name: string;
+  site_type: string;
+  module_key: string;
+  status: string;
+  is_published: boolean;
+  published_at: string | null;
+}
+
+/** GET /api/v1/sites — 백엔드는 { items, total } 형태로 응답한다. */
+export async function getSites(): Promise<SiteSummary[]> {
+  const res = await api
+    .get("api/v1/sites")
+    .json<{ items: SiteSummary[]; total: number }>();
+  return res.items ?? [];
+}
+
+// --- Users API ---
+
+/** GET /api/v1/users/me — 현재 로그인 사용자 프로필 */
+export async function getCurrentUser(): Promise<UserResponse> {
+  return api.get("api/v1/users/me").json<UserResponse>();
+}
+
 export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
+  // 백엔드 팀 API: GET /api/v1/subscriptions/me
   const data = await api.get("api/v1/subscriptions/me").json<MySubscriptionResponse>();
   const { subscription } = data;
   const plan = subscription.plan;
 
+  // 사이트 수 조회 (published 기준)
   let sitesUsed = 0;
   try {
-    const sites = await api.get("api/v1/sites").json<{ id: string; status: string; is_published?: boolean }[]>();
-    sitesUsed = sites.filter((s) => s.status === "published" || s.is_published).length;
+    const sites = await getSites();
+    sitesUsed = sites.filter((s) => s.is_published).length;
   } catch {
     // sites 조회 실패 시 0으로 유지
   }
@@ -181,10 +144,67 @@ export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   };
 }
 
-export async function upgradePlan(targetPlan: string): Promise<UpgradeResult> {
-  return api.post("api/v1/subscription/upgrade", { json: { target_plan: targetPlan } }).json<UpgradeResult>();
+/**
+ * 플랜 업그레이드 (개발 환경 전용 즉시 반영).
+ * POST /api/v1/dev/subscriptions/upgrade — APP_ENV ∈ {local,dev,test} + 이메일 인증 필요.
+ * targetPlan 은 프론트 키("pro"|"max") 또는 plan_code("PRO"|"MAX") 둘 다 허용.
+ */
+export async function upgradePlan(targetPlan: string): Promise<MySubscriptionResponse> {
+  return api
+    .post("api/v1/dev/subscriptions/upgrade", { json: { plan_code: toPlanCode(targetPlan) } })
+    .json<MySubscriptionResponse>();
 }
 
+/** POST /api/v1/billing/checkout — 실결제(Toss) 요청 생성. plan_code 기준. */
+export async function createCheckout(planKeyOrCode: string): Promise<BillingCheckoutResponse> {
+  return api
+    .post("api/v1/billing/checkout", { json: { plan_code: toPlanCode(planKeyOrCode) } })
+    .json<BillingCheckoutResponse>();
+}
+
+// --- Profile / Account API ---
+
+/** PATCH /api/v1/users/me — 이름/전화번호 수정 (둘 다 선택). */
+export async function updateProfile(data: { name?: string; phone?: string | null }): Promise<UserResponse> {
+  return api.patch("api/v1/users/me", { json: data }).json<UserResponse>();
+}
+
+/** DELETE /api/v1/auth/me — 회원 탈퇴(계정 영구 삭제). */
+export async function deleteAccount(): Promise<void> {
+  await api.delete("api/v1/auth/me");
+}
+
+/** POST /api/v1/auth/logout — refresh 토큰 무효화(쿠키 기반, best-effort). */
+export async function logoutApi(): Promise<void> {
+  try {
+    await api.post("api/v1/auth/logout");
+  } catch {
+    // 서버 로그아웃 실패해도 로컬 토큰은 제거하므로 무시
+  }
+}
+
+// --- OAuth API ---
+
+export type OAuthProvider = "kakao" | "naver";
+
+/** POST /api/v1/auth/oauth/{provider} — 인가코드 교환 로그인. */
+export async function oauthLogin(
+  provider: OAuthProvider,
+  params: { code: string; redirect_uri: string },
+): Promise<OAuthLoginResponse> {
+  return api.post(`api/v1/auth/oauth/${provider}`, { json: params }).json<OAuthLoginResponse>();
+}
+
+/** POST /api/v1/auth/oauth/complete-signup — 신규 소셜 사용자 가입 완료. */
+export async function completeOAuthSignup(data: {
+  signup_token: string;
+  email: string;
+  name: string;
+}): Promise<OAuthLoginResponse> {
+  return api.post("api/v1/auth/oauth/complete-signup", { json: data }).json<OAuthLoginResponse>();
+}
+
+// --- Sites publish (주의: 백엔드에 publish 액션 엔드포인트 미구현 — availability만 존재) ---
 export async function publishSite(siteId: string): Promise<{ status: string; domain: string }> {
   return api.post(`api/v1/sites/${siteId}/publish`).json<{ status: string; domain: string }>();
 }

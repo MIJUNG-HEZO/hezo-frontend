@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/layout/Sidebar";
-import AuthGuard from "@/components/layout/AuthGuard";
+import { inter, interDisplay } from "./fonts";
 import QueryProvider from "@/components/providers/QueryProvider";
+import AppShell from "@/components/layout/AppShell";
 
 export const metadata: Metadata = {
   title: "HEZO Studio",
@@ -15,13 +15,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko">
-      <body className="bg-gray-50 antialiased">
+    <html lang="ko" className={`${inter.variable} ${interDisplay.variable}`}>
+      <body className="font-sans antialiased">
         <QueryProvider>
-          <AuthGuard>
-            <Sidebar />
-            <main className="min-h-screen p-8 pl-16">{children}</main>
-          </AuthGuard>
+          <AppShell>{children}</AppShell>
         </QueryProvider>
       </body>
     </html>
