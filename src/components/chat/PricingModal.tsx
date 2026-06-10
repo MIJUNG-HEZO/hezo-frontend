@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { upgradePlan } from "@/lib/api";
+import { isCheckoutConfigured, startCheckout } from "@/lib/billing";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
 
@@ -9,22 +10,22 @@ interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (plan: string) => void;
-  currentPlan?: "starter" | "pro" | "enterprise";
-  targetPlan?: "pro" | "enterprise";
+  currentPlan?: "free" | "pro" | "max";
+  targetPlan?: "pro" | "max";
   onSuccess?: () => void;
 }
 
 const planIcon: Record<string, IconName> = {
-  starter: "leaf",
+  free: "leaf",
   pro: "rocket",
-  enterprise: "building-2",
+  max: "building-2",
 };
 
 export default function PricingModal({
   isOpen,
   onClose,
   onSelect,
-  currentPlan = "starter",
+  currentPlan = "free",
   targetPlan,
   onSuccess,
 }: PricingModalProps) {
@@ -43,7 +44,7 @@ export default function PricingModal({
 function PricingModalContent({
   onClose,
   onSelect,
-  currentPlan = "starter",
+  currentPlan = "free",
   targetPlan,
   onSuccess,
 }: Omit<PricingModalProps, "isOpen">) {
@@ -64,7 +65,7 @@ function PricingModalContent({
       return { label: "현재 플랜", disabled: true, style: disabledStyle };
     }
 
-    const planOrder = ["starter", "pro", "enterprise"];
+    const planOrder = ["free", "pro", "max"];
     const currentIndex = planOrder.indexOf(currentPlan);
     const targetIndex = planOrder.indexOf(planId);
 
@@ -72,16 +73,16 @@ function PricingModalContent({
       return { label: "현재 플랜 이하", disabled: true, style: disabledStyle };
     }
 
-    if (currentPlan === "starter" && planId === "enterprise") {
+    if (currentPlan === "free" && planId === "max") {
       return {
-        label: "Enterprise 문의하기",
+        label: "Max 문의하기",
         disabled: true,
         style: "border border-gray-300 text-gray-400 cursor-not-allowed",
         message: "Pro 구매 후 이용 가능",
       };
     }
 
-    if (currentPlan === "starter" && planId === "pro") {
+    if (currentPlan === "free" && planId === "pro") {
       return {
         label: "Pro 플랜 구매하기",
         disabled: false,
@@ -89,9 +90,9 @@ function PricingModalContent({
       };
     }
 
-    if (currentPlan === "pro" && planId === "enterprise") {
+    if (currentPlan === "pro" && planId === "max") {
       return {
-        label: "Enterprise 문의하기",
+        label: "Max 문의하기",
         disabled: false,
         style: "bg-gray-900 text-white hover:bg-gray-800",
       };
@@ -109,6 +110,13 @@ function PricingModalContent({
     setSelectedPlan(planId);
 
     try {
+      if (isCheckoutConfigured()) {
+        // 실결제: Toss 결제창으로 진입 (성공 시 successUrl로 리다이렉트되어 이 아래는 실행되지 않음)
+        await startCheckout(planId);
+        setLoading(false);
+        return;
+      }
+      // 로컬/개발: dev 엔드포인트로 즉시 업그레이드
       await upgradePlan(planId);
       setLoading(false);
       onSelect(planId);
@@ -120,16 +128,21 @@ function PricingModalContent({
         const response = (err as { response: Response }).response;
         try {
           const body = await response.json();
+          const msg = body?.error?.message || body?.message;
           if (response.status === 400) {
-            setError(body.message || "허용된 업그레이드 경로: Starter→Pro, Pro→Enterprise");
+            setError(msg || "허용된 업그레이드 경로: Free→Pro, Pro→Max");
           } else if (response.status === 402) {
-            setError(body.message || "결제 처리에 실패했습니다. 다시 시도해주세요.");
+            setError(msg || "결제 처리에 실패했습니다. 다시 시도해주세요.");
+          } else if (response.status === 403) {
+            setError(msg || "이메일 인증이 필요하거나 권한이 없습니다.");
           } else {
-            setError(body.message || "업그레이드 처리 중 오류가 발생했습니다.");
+            setError(msg || "업그레이드 처리 중 오류가 발생했습니다.");
           }
         } catch {
           setError("업그레이드 처리 중 오류가 발생했습니다.");
         }
+      } else if (err instanceof Error) {
+        setError(err.message);
       } else {
         setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
       }
@@ -138,8 +151,8 @@ function PricingModalContent({
 
   const plans = [
     {
-      id: "starter",
-      name: "Starter",
+      id: "free",
+      name: "Free",
       desc: "첫 번째 사이트를 무료로 만들어 보세요",
       priceLabel: "₩0",
       subLabel: "",
@@ -152,11 +165,11 @@ function PricingModalContent({
       priceLabel: billing === "monthly" ? "₩49,000" : "₩39,000",
       subLabel: billing === "monthly" ? "/ 월 (부가세 포함)" : "/ 월 (연간 결제, 부가세 포함)",
       highlighted: true,
-      features: ["Starter의 모든 기능 포함:", "추가 사이트 무제한 생성", "프리미엄 템플릿 15종", "Tier 2 경쟁사 대비 상대 평가", "LLM 벤치마크 주 1회", "커스텀 도메인 연결", "우선 기술 지원"],
+      features: ["Free의 모든 기능 포함:", "추가 사이트 무제한 생성", "프리미엄 템플릿 15종", "Tier 2 경쟁사 대비 상대 평가", "LLM 벤치마크 주 1회", "커스텀 도메인 연결", "우선 기술 지원"],
     },
     {
-      id: "enterprise",
-      name: "Enterprise",
+      id: "max",
+      name: "Max",
       desc: "대규모 운영, 전용 인프라",
       priceLabel: billing === "monthly" ? "₩190,000~" : "₩160,000~",
       subLabel: billing === "monthly" ? "/ 월 (부가세 포함)" : "/ 월 (연간 결제, 부가세 포함)",

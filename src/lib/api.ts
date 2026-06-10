@@ -1,5 +1,11 @@
 import ky, { isHTTPError, type BeforeErrorHook } from "ky";
-import type { SubscriptionStatus, UpgradeResult, MySubscriptionResponse, UserResponse } from "@/types";
+import type {
+  SubscriptionStatus,
+  MySubscriptionResponse,
+  UserResponse,
+  OAuthLoginResponse,
+  BillingCheckoutResponse,
+} from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -18,6 +24,22 @@ const handle401: BeforeErrorHook = ({ error }) => {
   }
   return error;
 };
+
+/** ky HTTPError에서 백엔드 에러 메시지를 추출 (없으면 fallback). */
+export async function getApiErrorMessage(
+  err: unknown,
+  fallback = "요청에 실패했습니다",
+): Promise<string> {
+  if (err && typeof err === "object" && "response" in err) {
+    try {
+      const body = await (err as { response: Response }).response.json();
+      return body?.error?.message ?? body?.message ?? body?.detail ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
 
 export const api = ky.create({
   prefix: API_BASE_URL,
@@ -39,13 +61,13 @@ export const api = ky.create({
 // --- Subscription API ---
 
 // plan_code를 프론트 plan 표시명으로 매핑
-function mapPlanCode(code: string): "starter" | "pro" | "enterprise" {
-  const map: Record<string, "starter" | "pro" | "enterprise"> = {
-    FREE: "starter",
+function mapPlanCode(code: string): "free" | "pro" | "max" {
+  const map: Record<string, "free" | "pro" | "max"> = {
+    FREE: "free",
     PRO: "pro",
-    MAX: "enterprise",
+    MAX: "max",
   };
-  return map[code] || "starter";
+  return map[code] || "free";
 }
 
 function getNextPlan(code: string): string | null {
@@ -55,6 +77,16 @@ function getNextPlan(code: string): string | null {
     MAX: null,
   };
   return map[code] ?? null;
+}
+
+// 프론트 plan 키("free"|"pro"|"max") → 백엔드 plan_code
+function toPlanCode(planKey: string): string {
+  const map: Record<string, string> = {
+    free: "FREE",
+    pro: "PRO",
+    max: "MAX",
+  };
+  return map[planKey.toLowerCase()] ?? planKey.toUpperCase();
 }
 
 // --- Sites API ---
@@ -112,10 +144,67 @@ export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   };
 }
 
-export async function upgradePlan(targetPlan: string): Promise<UpgradeResult> {
-  return api.post("api/v1/subscription/upgrade", { json: { target_plan: targetPlan } }).json<UpgradeResult>();
+/**
+ * 플랜 업그레이드 (개발 환경 전용 즉시 반영).
+ * POST /api/v1/dev/subscriptions/upgrade — APP_ENV ∈ {local,dev,test} + 이메일 인증 필요.
+ * targetPlan 은 프론트 키("pro"|"max") 또는 plan_code("PRO"|"MAX") 둘 다 허용.
+ */
+export async function upgradePlan(targetPlan: string): Promise<MySubscriptionResponse> {
+  return api
+    .post("api/v1/dev/subscriptions/upgrade", { json: { plan_code: toPlanCode(targetPlan) } })
+    .json<MySubscriptionResponse>();
 }
 
+/** POST /api/v1/billing/checkout — 실결제(Toss) 요청 생성. plan_code 기준. */
+export async function createCheckout(planKeyOrCode: string): Promise<BillingCheckoutResponse> {
+  return api
+    .post("api/v1/billing/checkout", { json: { plan_code: toPlanCode(planKeyOrCode) } })
+    .json<BillingCheckoutResponse>();
+}
+
+// --- Profile / Account API ---
+
+/** PATCH /api/v1/users/me — 이름/전화번호 수정 (둘 다 선택). */
+export async function updateProfile(data: { name?: string; phone?: string | null }): Promise<UserResponse> {
+  return api.patch("api/v1/users/me", { json: data }).json<UserResponse>();
+}
+
+/** DELETE /api/v1/auth/me — 회원 탈퇴(계정 영구 삭제). */
+export async function deleteAccount(): Promise<void> {
+  await api.delete("api/v1/auth/me");
+}
+
+/** POST /api/v1/auth/logout — refresh 토큰 무효화(쿠키 기반, best-effort). */
+export async function logoutApi(): Promise<void> {
+  try {
+    await api.post("api/v1/auth/logout");
+  } catch {
+    // 서버 로그아웃 실패해도 로컬 토큰은 제거하므로 무시
+  }
+}
+
+// --- OAuth API ---
+
+export type OAuthProvider = "kakao" | "naver";
+
+/** POST /api/v1/auth/oauth/{provider} — 인가코드 교환 로그인. */
+export async function oauthLogin(
+  provider: OAuthProvider,
+  params: { code: string; redirect_uri: string },
+): Promise<OAuthLoginResponse> {
+  return api.post(`api/v1/auth/oauth/${provider}`, { json: params }).json<OAuthLoginResponse>();
+}
+
+/** POST /api/v1/auth/oauth/complete-signup — 신규 소셜 사용자 가입 완료. */
+export async function completeOAuthSignup(data: {
+  signup_token: string;
+  email: string;
+  name: string;
+}): Promise<OAuthLoginResponse> {
+  return api.post("api/v1/auth/oauth/complete-signup", { json: data }).json<OAuthLoginResponse>();
+}
+
+// --- Sites publish (주의: 백엔드에 publish 액션 엔드포인트 미구현 — availability만 존재) ---
 export async function publishSite(siteId: string): Promise<{ status: string; domain: string }> {
   return api.post(`api/v1/sites/${siteId}/publish`).json<{ status: string; domain: string }>();
 }

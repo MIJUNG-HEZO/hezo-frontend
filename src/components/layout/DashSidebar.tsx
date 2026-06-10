@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getSites, getSubscriptionStatus, getCurrentUser } from "@/lib/api";
+import { getSites, getSubscriptionStatus, getCurrentUser, type SiteSummary } from "@/lib/api";
 import { isAuthenticated, logout } from "@/lib/auth-guard";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
@@ -11,7 +11,7 @@ import BillingPanel from "@/components/layout/BillingPanel";
 import PricingModal from "@/components/chat/PricingModal";
 import { cn } from "@/lib/utils";
 
-type Plan = "starter" | "pro" | "enterprise";
+type Plan = "free" | "pro" | "max";
 type NavItem = { href: string; label: string; icon: IconName; requiresSite?: boolean };
 
 const navItems: NavItem[] = [
@@ -57,11 +57,14 @@ function SidebarLink({
   );
 }
 
-export function DashSidebar() {
+export function DashSidebar({ onHide }: { onHide?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [hasSite, setHasSite] = useState(false);
-  const [plan, setPlan] = useState<Plan>("starter");
+  const [sites, setSites] = useState<SiteSummary[]>([]);
+  const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
+  const [siteMenuOpen, setSiteMenuOpen] = useState(false);
+  const [plan, setPlan] = useState<Plan>("free");
   const [userName, setUserName] = useState("사용자");
   const [isBillingOpen, setIsBillingOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
@@ -70,8 +73,17 @@ export function DashSidebar() {
   useEffect(() => {
     if (!isAuthenticated()) return;
     getSites()
-      .then((sites) => setHasSite(sites.some((s) => s.is_published)))
-      .catch(() => setHasSite(false));
+      .then((list) => {
+        const published = list.filter((s) => s.is_published);
+        setSites(published);
+        setHasSite(published.length > 0);
+        const saved = typeof window !== "undefined" ? localStorage.getItem("hezo_active_site") : null;
+        setActiveSiteId(published.find((s) => s.id === saved)?.id ?? published[0]?.id ?? null);
+      })
+      .catch(() => {
+        setHasSite(false);
+        setSites([]);
+      });
     getSubscriptionStatus()
       .then((status) => setPlan(status.plan))
       .catch(() => {});
@@ -81,7 +93,9 @@ export function DashSidebar() {
   }, [pathname]);
 
   const planLabel =
-    plan === "enterprise" ? "Enterprise 플랜" : plan === "pro" ? "Pro 플랜" : "Starter 플랜";
+    plan === "max" ? "Max 플랜" : plan === "pro" ? "Pro 플랜" : "Free 플랜";
+
+  const activeSite = sites.find((s) => s.id === activeSiteId);
 
   const isActive = (href: string) =>
     pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
@@ -111,15 +125,73 @@ export function DashSidebar() {
           <span className="font-display text-xl font-extrabold tracking-[-0.02em] text-gray-900">
             HEZO
           </span>
+          {onHide && (
+            <button
+              type="button"
+              onClick={onHide}
+              aria-label="사이드바 숨기기"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+            >
+              <Icon name="chevron-left" size={20} />
+            </button>
+          )}
         </div>
 
-        {/* site selector */}
+        {/* site selector — 다중 사이트 시 드롭다운으로 전환 */}
         {hasSite && (
-          <button className="mb-3.5 flex w-full items-center gap-2.5 rounded-md border border-gray-200 bg-gray-50 px-3 py-[9px] hover:bg-gray-100">
-            <Icon name="globe" size={16} className="text-gray-500" />
-            <span className="text-sm font-semibold text-gray-700">내 사이트</span>
-            <Icon name="chevron-down" size={16} className="ml-auto text-gray-400" />
-          </button>
+          <div className="relative mb-3.5">
+            <button
+              type="button"
+              onClick={() => sites.length > 1 && setSiteMenuOpen((o) => !o)}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-md border border-gray-200 bg-gray-50 px-3 py-[9px]",
+                sites.length > 1 ? "hover:bg-gray-100" : "cursor-default",
+              )}
+            >
+              <Icon name="globe" size={16} className="flex-none text-gray-500" />
+              <span className="flex-1 truncate text-left text-sm font-semibold text-gray-700">
+                {activeSite?.name ?? "내 사이트"}
+              </span>
+              {sites.length > 1 && (
+                <Icon name="chevron-down" size={16} className="flex-none text-gray-400" />
+              )}
+            </button>
+
+            {siteMenuOpen && sites.length > 1 && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setSiteMenuOpen(false)} />
+                <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                  {sites.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveSiteId(s.id);
+                        try {
+                          localStorage.setItem("hezo_active_site", s.id);
+                        } catch {}
+                        setSiteMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50",
+                        s.id === activeSiteId ? "font-semibold text-primary-700" : "text-gray-600",
+                      )}
+                    >
+                      <Icon
+                        name="globe"
+                        size={14}
+                        className={s.id === activeSiteId ? "text-primary-600" : "text-gray-400"}
+                      />
+                      <span className="flex-1 truncate">{s.name}</span>
+                      {s.id === activeSiteId && (
+                        <Icon name="check" size={14} className="flex-none text-primary-600" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {/* primary nav */}
@@ -193,7 +265,7 @@ export function DashSidebar() {
           setIsPricingOpen(false);
           setUpgradePlan(null);
         }}
-        targetPlan={upgradePlan as "pro" | "enterprise" | undefined}
+        targetPlan={upgradePlan as "pro" | "max" | undefined}
       />
     </>
   );

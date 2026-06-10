@@ -59,7 +59,7 @@ export default function DashboardPage() {
   const [agreementLoading, setAgreementLoading] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
   const [hasSite, setHasSite] = useState<boolean | null>(null); // null = loading
-  const [userPlan, setUserPlan] = useState<"starter" | "pro" | "enterprise">("starter");
+  const [userPlan, setUserPlan] = useState<"free" | "pro" | "max">("free");
   const [sitesUsed, setSitesUsed] = useState(0);
   const [sitesLimit, setSitesLimit] = useState(0);
   const searchParams = useSearchParams();
@@ -83,12 +83,13 @@ export default function DashboardPage() {
   }, []);
 
   const handleNewSite = useCallback(() => {
-    if (userPlan === "starter" || sitesUsed >= sitesLimit) {
+    // 한도 내면 챗봇 진입(무료도 챗봇/프리뷰 가능), 한도 초과면 업그레이드 안내
+    if (sitesLimit > 0 && sitesUsed >= sitesLimit) {
       setIsPricingOpen(true);
     } else {
       setIsAgreementOpen(true);
     }
-  }, [userPlan, sitesUsed, sitesLimit]);
+  }, [sitesUsed, sitesLimit]);
 
   useEffect(() => {
     if (hasSite !== null && searchParams.get("chat") === "open") {
@@ -99,7 +100,7 @@ export default function DashboardPage() {
 
   const handlePlanSelect = (plan: string) => {
     setIsPricingOpen(false);
-    setUserPlan(plan as "starter" | "pro" | "enterprise");
+    setUserPlan(plan as "free" | "pro" | "max");
     getSubscriptionStatus()
       .then((status) => {
         setSitesUsed(status.sites_used);
@@ -121,7 +122,18 @@ export default function DashboardPage() {
       setIsChatOpen(true);
     } catch (err) {
       console.error("Failed to create site:", err);
-      alert("사이트 생성에 실패했습니다. 다시 시도해 주세요.");
+      setIsAgreementOpen(false);
+      // 플랜 한도 초과(403) → 업그레이드 안내
+      if (
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        (err as { response: Response }).response.status === 403
+      ) {
+        setIsPricingOpen(true);
+      } else {
+        alert("사이트 생성에 실패했습니다. 다시 시도해 주세요.");
+      }
     } finally {
       setAgreementLoading(false);
     }

@@ -45,7 +45,7 @@ export interface MySubscriptionResponse {
 
 // 프론트에서 사용하는 통합 구독 상태 (API 응답을 가공한 것)
 export interface SubscriptionStatus {
-  plan: "starter" | "pro" | "enterprise";
+  plan: "free" | "pro" | "max";
   plan_code: string;
   plan_name: string;
   sites_used: number;
@@ -56,12 +56,34 @@ export interface SubscriptionStatus {
   plan_updated_at: string | null;
 }
 
-// 플랜 업그레이드 결과 (POST /api/v1/subscription/upgrade 응답)
+// 플랜 업그레이드 결과 (구버전 응답 형태 — 현재는 MySubscriptionResponse 사용)
 export interface UpgradeResult {
   success: boolean;
   plan: string;
   sites_limit: number;
   message: string;
+}
+
+// 소셜 로그인 응답 (POST /api/v1/auth/oauth/{provider} | complete-signup)
+export interface OAuthLoginResponse {
+  signup_required: boolean;
+  access_token: string | null;
+  token_type: string;
+  signup_token: string | null;
+  provider: string | null;
+  suggested_email: string | null;
+  suggested_name: string | null;
+}
+
+// 결제 요청 생성 응답 (POST /api/v1/billing/checkout)
+export interface BillingCheckoutResponse {
+  payment_request_id: string;
+  provider: string;
+  plan_code: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_params: Record<string, unknown>;
 }
 
 // 플랜 관련 에러 응답 (403)

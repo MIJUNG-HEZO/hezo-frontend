@@ -14,9 +14,9 @@ interface BillingPanelProps {
 }
 
 const PLAN_DISPLAY: Record<string, { name: string; icon: IconName; tint: string }> = {
-  starter: { name: "Starter", icon: "leaf", tint: "text-gray-600" },
+  free: { name: "Free", icon: "leaf", tint: "text-gray-600" },
   pro: { name: "Pro", icon: "rocket", tint: "text-primary-600" },
-  enterprise: { name: "Enterprise", icon: "building-2", tint: "text-blue-600" },
+  max: { name: "Max", icon: "building-2", tint: "text-blue-600" },
 };
 
 function UpgradeButton({
@@ -138,7 +138,7 @@ export default function BillingPanel({ isOpen, onClose, onUpgrade }: BillingPane
                 <div className="flex flex-col gap-3">
                   <p className="text-xs font-medium uppercase text-gray-500">플랜 업그레이드</p>
 
-                  {status.plan === "starter" && (
+                  {status.plan === "free" && (
                     <>
                       <UpgradeButton
                         plan="pro"
@@ -149,8 +149,8 @@ export default function BillingPanel({ isOpen, onClose, onUpgrade }: BillingPane
                         onClick={onUpgrade}
                       />
                       <UpgradeButton
-                        plan="enterprise"
-                        label="Enterprise"
+                        plan="max"
+                        label="Max"
                         price="₩190,000~/월 · 5사이트"
                         icon="building-2"
                         tone="blue"
@@ -161,8 +161,8 @@ export default function BillingPanel({ isOpen, onClose, onUpgrade }: BillingPane
 
                   {status.plan === "pro" && (
                     <UpgradeButton
-                      plan="enterprise"
-                      label="Enterprise"
+                      plan="max"
+                      label="Max"
                       price="₩190,000~/월 · 5사이트"
                       icon="building-2"
                       tone="blue"

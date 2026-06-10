@@ -23,7 +23,7 @@ export default function PreviewPage() {
   const siteId = params.siteId as string;
 
   const siteStatus = "preview_ready";
-  const userPlan: "starter" | "pro" | "enterprise" = "starter";
+  const userPlan: "free" | "pro" | "max" = "free";
   const sitesUsed = 0;
   const sitesLimit = 0;
 

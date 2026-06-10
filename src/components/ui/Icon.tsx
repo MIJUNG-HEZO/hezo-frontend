@@ -7,7 +7,7 @@ import {
   Rocket, Calendar, Bell, RefreshCw, FileText, Braces, CircleHelp, Code, Tag,
   Type, Link as LinkIcon, Zap, TriangleAlert, CircleCheckBig, Award, X, Menu, Plus,
   Users, User, Phone, ClipboardList, Search, Mail, CircleX,
-  Target, Heart, Star, MapPin, Monitor, ShoppingCart, Clock,
+  Target, Heart, Star, MapPin, Monitor, ShoppingCart, Clock, Trash2,
 } from "lucide-react";
 
 // Lucide icon registry keyed by the kebab-case names used in the design handoff.
@@ -75,6 +75,7 @@ const ICONS = {
   monitor: Monitor,
   "shopping-cart": ShoppingCart,
   clock: Clock,
+  "trash-2": Trash2,
 } as const;
 
 export type IconName = keyof typeof ICONS;

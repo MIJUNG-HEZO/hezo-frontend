@@ -24,8 +24,8 @@ type Plan = {
 
 const plans: Plan[] = [
   {
-    id: "starter",
-    name: "Starter",
+    id: "free",
+    name: "Free",
     desc: "첫 번째 사이트를 무료로 만들어 보세요",
     price: { monthly: "₩0", yearly: "₩0" },
     sub: "평생 무료",
@@ -48,7 +48,7 @@ const plans: Plan[] = [
     price: { monthly: "₩49,000", yearly: "₩39,000" },
     sub: "/ 월 · 부가세 포함",
     features: [
-      "Starter의 모든 기능 포함",
+      "Free의 모든 기능 포함",
       "추가 사이트 무제한 생성",
       "프리미엄 템플릿 15종",
       "Tier 2 경쟁사 대비 상대 평가",
@@ -60,8 +60,8 @@ const plans: Plan[] = [
     hierarchy: "primary",
   },
   {
-    id: "enterprise",
-    name: "Enterprise",
+    id: "max",
+    name: "Max",
     desc: "대규모 운영, 전용 인프라",
     price: { monthly: "₩190,000~", yearly: "₩160,000~" },
     sub: "/ 월 · 부가세 포함",
@@ -155,12 +155,12 @@ export function Pricing() {
               <span className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">
                 {p.price[billing]}
               </span>
-              {p.id !== "starter" && (
+              {p.id !== "free" && (
                 <span className="text-sm font-medium text-gray-400">{p.sub}</span>
               )}
             </div>
             <div className="mb-[22px] min-h-[18px] text-[13px] text-gray-400">
-              {p.id === "starter"
+              {p.id === "free"
                 ? p.sub
                 : billing === "yearly"
                   ? "연간 결제 시 월 환산 금액"

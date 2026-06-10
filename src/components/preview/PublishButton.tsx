@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 interface PublishButtonProps {
   siteId: string;
   siteStatus: string;
-  userPlan: "starter" | "pro" | "enterprise";
+  userPlan: "free" | "pro" | "max";
   sitesUsed: number;
   sitesLimit: number;
 }
@@ -29,7 +29,7 @@ export default function PublishButton({
   const isDisabled = siteStatus !== "preview_ready";
 
   const handlePublish = async () => {
-    if (userPlan === "starter" || sitesUsed >= sitesLimit) {
+    if (userPlan === "free" || sitesUsed >= sitesLimit) {
       setShowPricingModal(true);
       return;
     }

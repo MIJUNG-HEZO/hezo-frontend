@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api } from "@/lib/api";
+import { startOAuthLogin } from "@/lib/oauth";
 import { Logo } from "@/components/landing/Logo";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -88,6 +89,15 @@ export default function LoginPage() {
     signupForm.reset();
   };
 
+  const handleOAuth = (provider: "kakao" | "naver") => {
+    setError("");
+    const started = startOAuthLogin(provider);
+    if (!started) {
+      const envKey = provider === "kakao" ? "NEXT_PUBLIC_KAKAO_CLIENT_ID" : "NEXT_PUBLIC_NAVER_CLIENT_ID";
+      setError(`${provider === "kakao" ? "카카오" : "네이버"} 로그인 키가 설정되지 않았습니다 (${envKey}).`);
+    }
+  };
+
   const isLogin = mode === "login";
 
   return (
@@ -106,21 +116,21 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* 소셜 로그인 (준비 중) */}
+        {/* 소셜 로그인 */}
         <div className="mb-5 flex flex-col gap-2.5">
           <button
-            disabled
-            className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md bg-[#FEE500] py-3 text-sm font-medium text-gray-900 opacity-60"
+            type="button"
+            onClick={() => handleOAuth("kakao")}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[#FEE500] py-3 text-sm font-medium text-gray-900 transition-opacity hover:opacity-90"
           >
             <Icon name="message-circle" size={16} /> 카카오로 시작하기
-            <span className="text-[9px] text-gray-600">(준비 중)</span>
           </button>
           <button
-            disabled
-            className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md bg-[#03C75A] py-3 text-sm font-medium text-white opacity-60"
+            type="button"
+            onClick={() => handleOAuth("naver")}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[#03C75A] py-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             <span className="font-bold">N</span> 네이버로 시작하기
-            <span className="text-[9px] text-white/80">(준비 중)</span>
           </button>
         </div>
 

@@ -77,7 +77,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
 
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
   const [showPricingInChat, setShowPricingInChat] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<"starter" | "pro" | "enterprise">("starter");
+  const [currentPlan, setCurrentPlan] = useState<"free" | "pro" | "max">("free");
   const [publishing, setPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
 
@@ -88,7 +88,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   }, []);
 
   const handlePublish = async () => {
-    if (currentPlan === "starter") {
+    if (currentPlan === "free") {
       setShowPricingInChat(true);
       return;
     }
@@ -146,11 +146,9 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setError("");
     try {
       if (siteId) {
-        await api
-          .patch(`api/v1/sites/${siteId}/onboarding/structure`, {
-            json: { structure: selectedStructure, template_id: selectedTemplate },
-          })
-          .json();
+        await api.patch(`api/v1/sites/${siteId}/onboarding/structure`, {
+          json: { structure: selectedStructure, template_id: selectedTemplate },
+        });
       }
       setPhase("conversation");
     } catch {
@@ -169,15 +167,24 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setLoading(true);
     setError("");
     try {
-      await api.patch(`api/v1/sites/${id}/onboarding/business`, { json: { business_name: businessName || "테스트 업체" } }).json();
-      await api.patch(`api/v1/sites/${id}/onboarding/industry`, { json: { industry: "한의원", job_module: "medical" } }).json();
-      await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: services ? services.split(",").map((s) => s.trim()) : ["서비스1"] } }).json();
-      await api.patch(`api/v1/sites/${id}/onboarding/contact`, { json: { phone: phone || "02-1234-5678", email: "", address: "", hours: "" } }).json();
-      await api.patch(`api/v1/sites/${id}/onboarding/legal`, { json: { business_reg_number: "123-45-67890" } }).json();
-      await api.post(`api/v1/sites/${id}/onboarding/complete`).json();
-      await api.post(`api/v1/sites/${id}/contract`).json();
-      const preview = await api.post(`api/v1/sites/${id}/preview`).json();
-      setPreviewData(preview as Record<string, unknown>);
+      await api.patch(`api/v1/sites/${id}/onboarding/business`, { json: { business_name: businessName || "테스트 업체" } });
+      await api.patch(`api/v1/sites/${id}/onboarding/industry`, { json: { industry: "한의원", job_module: "medical" } });
+      await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: services ? services.split(",").map((s) => s.trim()) : ["서비스1"] } });
+      await api.patch(`api/v1/sites/${id}/onboarding/contact`, { json: { phone: phone || "02-1234-5678", email: "", address: "", hours: "" } });
+      await api.patch(`api/v1/sites/${id}/onboarding/legal`, { json: { business_reg_number: "123-45-67890" } });
+      await api.post(`api/v1/sites/${id}/onboarding/complete`);
+      await api.post(`api/v1/sites/${id}/contract`);
+      await api.post(`api/v1/sites/${id}/preview`);
+      // 백엔드 onboarding/preview는 현재 204 스텁 — 프리뷰 요약을 클라이언트에서 구성
+      setPreviewData({
+        site_id: id,
+        structure: selectedStructure,
+        template: selectedTemplate,
+        business_name: businessName || "테스트 업체",
+        services: services ? services.split(",").map((s) => s.trim()) : ["서비스1"],
+        phone: phone || "02-1234-5678",
+        note: "백엔드 스텁(204) 응답 — Contract/Preview 콘텐츠 생성은 추후 연동",
+      });
       setPhase("preview");
     } catch (err) {
       console.error(err);
@@ -432,9 +439,9 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                   isOpen={showPricingInChat}
                   onClose={() => setShowPricingInChat(false)}
                   onSelect={(plan) => {
-                    setCurrentPlan(plan as "starter" | "pro" | "enterprise");
+                    setCurrentPlan(plan as "free" | "pro" | "max");
                     setShowPricingInChat(false);
-                    if (siteId && plan !== "starter") {
+                    if (siteId && plan !== "free") {
                       setPublishing(true);
                       setError("");
                       publishSite(siteId)
