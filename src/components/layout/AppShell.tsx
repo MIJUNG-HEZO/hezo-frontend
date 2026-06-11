@@ -13,6 +13,7 @@ function isPublicRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname.startsWith("/auth") ||
+    pathname.startsWith("/oauth") ||
     pathname.startsWith("/email-verification") ||
     pathname.startsWith("/preview") ||
     pathname.startsWith("/billing")
