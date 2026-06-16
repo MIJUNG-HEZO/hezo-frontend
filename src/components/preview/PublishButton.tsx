@@ -25,21 +25,17 @@ export default function PublishButton({
   const [isLoading, setIsLoading] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState(userPlan);
 
   const isDisabled = siteStatus !== "preview_ready";
+  const needsUpgrade = currentPlan === "free" || sitesUsed >= sitesLimit;
 
-  const handlePublish = async () => {
-    if (userPlan === "free" || sitesUsed >= sitesLimit) {
-      setShowPricingModal(true);
-      return;
-    }
+  const doPublish = async () => {
     setIsLoading(true);
     try {
       await publishSite(siteId);
       setSuccessMessage("사이트가 성공적으로 발급되었습니다!");
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 3000);
+      setTimeout(() => router.push("/dashboard"), 2000);
     } catch (error: unknown) {
       if (
         error &&
@@ -54,9 +50,20 @@ export default function PublishButton({
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handlePlanSelect = (_plan: string) => {
+  const handlePublish = async () => {
+    if (needsUpgrade) {
+      setShowPricingModal(true);
+      return;
+    }
+    await doPublish();
+  };
+
+  const handlePlanSelect = (plan: string) => {
     setShowPricingModal(false);
+    if (plan !== "free") {
+      setCurrentPlan(plan as "free" | "pro" | "max");
+      doPublish();
+    }
   };
 
   return (
@@ -65,23 +72,20 @@ export default function PublishButton({
         onClick={handlePublish}
         disabled={isDisabled || isLoading}
         className={cn(
-          "rounded-md px-6 py-3 text-sm font-semibold transition-colors",
+          "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors sm:px-6 sm:py-2",
           isDisabled
             ? "cursor-not-allowed bg-gray-200 text-gray-400"
             : isLoading
               ? "cursor-wait bg-primary-400 text-white"
-              : "bg-primary-600 text-white hover:bg-primary-700",
+              : "bg-primary-500 text-white hover:bg-primary-600",
         )}
       >
-        {isLoading ? "발급 중..." : isDisabled ? "프리뷰 준비 중" : "사이트 발급하기"}
+        {isLoading ? "발급 중..." : isDisabled ? "준비 중" : "사이트 발급하기"}
       </button>
 
       {successMessage && (
-        <div className="mt-3 rounded-lg border border-success-200 bg-success-50 px-4 py-2 text-sm text-success-700">
+        <div className="mt-2 rounded-lg border border-success-200 bg-success-50 px-3 py-1.5 text-xs text-success-700">
           {successMessage}
-          <span className="mt-1 block text-xs text-success-500">
-            3초 후 대시보드로 이동합니다...
-          </span>
         </div>
       )}
 
@@ -89,7 +93,7 @@ export default function PublishButton({
         isOpen={showPricingModal}
         onClose={() => setShowPricingModal(false)}
         onSelect={handlePlanSelect}
-        currentPlan={userPlan}
+        currentPlan={currentPlan}
       />
     </>
   );

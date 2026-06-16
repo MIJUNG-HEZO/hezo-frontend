@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, getCurrentUser } from "@/lib/api";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 
@@ -11,21 +11,17 @@ export default function VerifyEmailPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [notVerifiedYet, setNotVerifiedYet] = useState(false);
 
   const handleRequestVerification = async () => {
     setLoading(true);
     setError("");
+    setNotVerifiedYet(false);
 
     try {
-      const res: { expires_at: string; verification_url: string | null } = await api
-        .post("api/v1/auth/email-verification/request")
-        .json();
-
+      await api.post("api/v1/auth/email-verification/request").json();
       setSent(true);
-
-      if (res.verification_url) {
-        console.log("이메일 인증 URL (개발용):", res.verification_url);
-      }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         try {
@@ -46,8 +42,21 @@ export default function VerifyEmailPage() {
     }
   };
 
-  const handleSkip = () => {
-    router.push("/dashboard");
+  const handleCheckAndGo = async () => {
+    setChecking(true);
+    setNotVerifiedYet(false);
+    try {
+      const user = await getCurrentUser();
+      if (user.email_verified) {
+        router.push("/dashboard");
+      } else {
+        setNotVerifiedYet(true);
+      }
+    } catch {
+      setError("서버 연결에 실패했습니다");
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
@@ -79,7 +88,7 @@ export default function VerifyEmailPage() {
             >
               {loading ? "발송 중..." : "인증 메일 보내기"}
             </Button>
-            <Button hierarchy="secondary" size="lg" onClick={handleSkip} className="w-full">
+            <Button hierarchy="secondary" size="lg" onClick={() => router.push("/dashboard")} className="w-full">
               나중에 하기
             </Button>
           </div>
@@ -90,9 +99,27 @@ export default function VerifyEmailPage() {
                 <Icon name="circle-check-big" size={16} /> 인증 메일이 발송되었습니다
               </p>
               <p className="mt-1 text-xs text-success-600">
-                이메일 수신함을 확인하고 인증 링크를 클릭해 주세요.
+                이메일 수신함을 확인한 뒤 아래 버튼을 눌러주세요.
               </p>
             </div>
+
+            {notVerifiedYet && (
+              <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-3 text-xs text-warning-700">
+                아직 이메일 인증이 완료되지 않았습니다. 메일의 링크를 클릭한 후 다시 시도해주세요.
+              </div>
+            )}
+
+            <Button
+              hierarchy="primary"
+              size="lg"
+              onClick={handleCheckAndGo}
+              disabled={checking}
+              className="w-full"
+              iconLeading={<Icon name="check" size={16} />}
+            >
+              {checking ? "확인 중..." : "이메일 확인 후 이동하기"}
+            </Button>
+
             <Button
               hierarchy="secondary"
               size="md"
@@ -102,8 +129,9 @@ export default function VerifyEmailPage() {
             >
               {loading ? "재발송 중..." : "인증 메일 재발송"}
             </Button>
+
             <button
-              onClick={handleSkip}
+              onClick={() => router.push("/dashboard")}
               className="text-xs text-gray-400 transition-colors hover:text-gray-600"
             >
               나중에 인증하기 →

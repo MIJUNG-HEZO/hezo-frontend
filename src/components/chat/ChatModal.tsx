@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { api, getSubscriptionStatus, publishSite } from "@/lib/api";
+import { api, getSubscriptionStatus, publishSite, getPipelineStatus } from "@/lib/api";
+import { renderTemplate } from "@/lib/templateRenderer";
 import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
@@ -13,25 +14,65 @@ type Phase = "start" | "structure" | "template" | "conversation" | "preview";
 
 const structureOptions: { id: string; label: string; desc: string; icon: IconName; recommended?: boolean }[] = [
   { id: "landing", label: "랜딩페이지", desc: "한 페이지로 핵심 메시지 전달", icon: "monitor", recommended: true },
-  { id: "multi", label: "일반 홈페이지", desc: "여러 페이지로 상세 정보 전달", icon: "file-text" },
+  { id: "multi", label: "블로그", desc: "콘텐츠·기록 중심 블로그형", icon: "file-text" },
   { id: "store", label: "스토어", desc: "상품/메뉴 카탈로그 중심", icon: "shopping-cart" },
 ];
 
-const templateOptions: Record<string, { id: string; name: string; desc: string; previewUrl: string }[]> = {
+const templateOptions: Record<string, { id: string; name: string; desc: string; previewUrl: string; badge?: string }[]> = {
   landing: [
-    { id: "01-clinic-landing", name: "치과/임플란트 상담", desc: "상담 전환형 랜딩페이지", previewUrl: "/templates/landing/01-clinic-landing.html" },
-    { id: "medical-clinic", name: "Medical Clinic", desc: "병원/한의원 랜딩", previewUrl: "" },
-    { id: "consulting", name: "Consulting", desc: "전문직 소개 랜딩", previewUrl: "" },
+    { id: "01-clinic-landing", name: "병원/임플란트 상담", desc: "상담 전환형 랜딩페이지", previewUrl: "/templates/landing/01-clinic-landing.html", badge: "추천" },
+    { id: "02-course-landing", name: "강의/부트캠프", desc: "수강 신청형 랜딩페이지", previewUrl: "/templates/landing/02-course-landing.html" },
+    { id: "17-solar-energy", name: "시공/설치 서비스", desc: "견적 문의형 랜딩페이지", previewUrl: "/templates/landing/17-solar-energy.html" },
   ],
   multi: [
-    { id: "01-study-notebook", name: "공부 정리/학습 기록", desc: "학습 노트 블로그", previewUrl: "/templates/blog/01-study-notebook.html" },
-    { id: "tech-blog", name: "Tech Blog", desc: "개발자 블로그", previewUrl: "" },
+    { id: "01-food-travel-blog", name: "음식/여행 블로그", desc: "감성 콘텐츠 블로그", previewUrl: "/templates/blog/01-food-travel-blog.html", badge: "추천" },
+    { id: "03-developer-docs", name: "개발자 블로그", desc: "기술 문서/포트폴리오", previewUrl: "/templates/blog/03-developer-docs.html" },
+    { id: "17-career-notebook", name: "커리어 성장 노트", desc: "이직·취업 기록 블로그", previewUrl: "/templates/blog/17-career-notebook.html" },
   ],
   store: [
-    { id: "01-cafe-menu", name: "카페/디저트 메뉴", desc: "메뉴 주문형 스토어", previewUrl: "/templates/store/01-cafe-menu.html" },
-    { id: "beauty-salon", name: "Beauty Salon", desc: "미용실/스파", previewUrl: "" },
+    { id: "01-cafe-menu", name: "카페/디저트 메뉴", desc: "메뉴 주문형 스토어", previewUrl: "/templates/store/01-cafe-menu.html", badge: "추천" },
+    { id: "06-oops-nail", name: "네일/뷰티샵", desc: "스타일 예약형 스토어", previewUrl: "/templates/store/06-oops-nail.html" },
+    { id: "10-wine-market", name: "와인/주류 셀렉샵", desc: "큐레이션 상품 스토어", previewUrl: "/templates/store/10-wine-market.html" },
   ],
 };
+
+/** 폼 입력값으로 로컬 Contract JSON 생성 (백엔드 없이 미리보기용) */
+function buildLocalContract(
+  businessName: string,
+  services: string,
+  phone: string,
+  templateId: string,
+) {
+  const serviceList = services
+    ? services.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  return {
+    template: { template_id: templateId },
+    brand: { name: businessName || "My Business" },
+    contact: {
+      phone: phone || "",
+      email: "",
+      address: "",
+      hours: { weekday: "" },
+    },
+    content: {
+      landing: {
+        domain_data: {
+          hero: {
+            headline: businessName || "환영합니다",
+            subheadline: services || "",
+            cta_text: "지금 시작하기",
+          },
+          services: serviceList.map((s) => ({ name: s, desc: "" })),
+          values: [] as { name: string; desc: string }[],
+          reviews: [],
+          faq: [],
+        },
+      },
+    },
+  };
+}
 
 function getProgress(phase: Phase) {
   const items = [
@@ -59,7 +100,6 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   const [selectedStructure, setSelectedStructure] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [siteId, setSiteId] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -75,17 +115,49 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   const [services, setServices] = useState("");
   const [phone, setPhone] = useState("");
 
+  const [previewSrcdoc, setPreviewSrcdoc] = useState<string | null>(null);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
   const [showPricingInChat, setShowPricingInChat] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<"free" | "pro" | "max">("free");
   const [publishing, setPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
+  const [pipelineMode, setPipelineMode] = useState<"aws_pipeline" | "local" | null>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+  const [pipelineMessage, setPipelineMessage] = useState<string>("");
 
   useEffect(() => {
     getSubscriptionStatus()
       .then((status) => setCurrentPlan(status.plan))
       .catch(() => {});
   }, []);
+
+  // 파이프라인 폴링 (AWS 모드에서만)
+  useEffect(() => {
+    if (pipelineMode !== "aws_pipeline" || !siteId) return;
+    if (pipelineStatus === "published" || pipelineStatus === "generation_failed") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await getPipelineStatus(siteId);
+        setPipelineStatus(res.pipeline_status);
+        if (res.pipeline_status === "generation_complete" || res.pipeline_status === "published") {
+          setPublishSuccess(true);
+          clearInterval(interval);
+          setTimeout(() => {
+            onClose();
+            window.location.href = "/dashboard";
+          }, 2000);
+        } else if (res.pipeline_status === "generation_failed") {
+          setError(res.error || "생성 에이전트 실행에 실패했습니다.");
+          clearInterval(interval);
+        }
+      } catch {
+        // 폴링 에러는 무시하고 계속 시도
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [pipelineMode, siteId, pipelineStatus, onClose]);
 
   const handlePublish = async () => {
     if (currentPlan === "free") {
@@ -99,12 +171,20 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setPublishing(true);
     setError("");
     try {
-      await publishSite(siteId);
-      setPublishSuccess(true);
-      setTimeout(() => {
-        onClose();
-        window.location.href = "/dashboard";
-      }, 1500);
+      const res = await publishSite(siteId);
+      setPipelineMode(res.mode);
+      setPipelineStatus(res.pipeline_status);
+      setPipelineMessage(res.message);
+
+      if (res.mode === "local") {
+        // 로컬 모드: 즉시 완료
+        setPublishSuccess(true);
+        setTimeout(() => {
+          onClose();
+          window.location.href = "/dashboard";
+        }, 1500);
+      }
+      // AWS 모드: useEffect 폴링이 상태 추적
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const response = (err as { response: Response }).response;
@@ -144,48 +224,60 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     if (!selectedTemplate || !selectedStructure) return;
     setLoading(true);
     setError("");
+    // 백엔드 저장 시도 (실패해도 다음 단계로 진행)
     try {
-      if (siteId) {
-        await api.patch(`api/v1/sites/${siteId}/onboarding/structure`, {
+      const id = siteId || propSiteId;
+      if (id) {
+        await api.patch(`api/v1/sites/${id}/onboarding/structure`, {
           json: { structure: selectedStructure, template_id: selectedTemplate },
         });
       }
-      setPhase("conversation");
     } catch {
-      setError("구조 저장 실패");
+      // 백엔드 없어도 진행
     } finally {
       setLoading(false);
     }
+    setPhase("conversation");
   };
 
   const handleConversationComplete = async () => {
-    const id = siteId || propSiteId;
-    if (!id) {
-      setError("사이트 ID가 없습니다. 모달을 닫고 다시 시도해 주세요.");
+    if (!selectedTemplate) {
+      setError("템플릿을 먼저 선택해 주세요.");
       return;
     }
     setLoading(true);
     setError("");
     try {
-      await api.patch(`api/v1/sites/${id}/onboarding/business`, { json: { business_name: businessName || "테스트 업체" } });
-      await api.patch(`api/v1/sites/${id}/onboarding/industry`, { json: { industry: "한의원", job_module: "medical" } });
-      await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: services ? services.split(",").map((s) => s.trim()) : ["서비스1"] } });
-      await api.patch(`api/v1/sites/${id}/onboarding/contact`, { json: { phone: phone || "02-1234-5678", email: "", address: "", hours: "" } });
-      await api.patch(`api/v1/sites/${id}/onboarding/legal`, { json: { business_reg_number: "123-45-67890" } });
-      await api.post(`api/v1/sites/${id}/onboarding/complete`);
-      await api.post(`api/v1/sites/${id}/contract`);
-      await api.post(`api/v1/sites/${id}/preview`);
-      // 백엔드 onboarding/preview는 현재 204 스텁 — 프리뷰 요약을 클라이언트에서 구성
-      setPreviewData({
-        site_id: id,
-        structure: selectedStructure,
-        template: selectedTemplate,
-        business_name: businessName || "테스트 업체",
-        services: services ? services.split(",").map((s) => s.trim()) : ["서비스1"],
-        phone: phone || "02-1234-5678",
-        note: "백엔드 스텁(204) 응답 — Contract/Preview 콘텐츠 생성은 추후 연동",
-      });
+      // 1. 로컬 Contract JSON으로 즉시 미리보기 생성 (백엔드 불필요)
+      const localContract = buildLocalContract(businessName, services, phone, selectedTemplate);
+      const html = await renderTemplate(
+        localContract as unknown as Parameters<typeof renderTemplate>[0],
+        selectedTemplate,
+        selectedStructure,
+      );
+      setPreviewSrcdoc(html);
       setPhase("preview");
+
+      // 2. 백그라운드에서 백엔드 저장 시도 (실패해도 미리보기 유지)
+      const id = siteId || propSiteId;
+      if (id) {
+        (async () => {
+          try {
+            const serviceList = services ? services.split(",").map((s) => s.trim()) : ["서비스1"];
+            await api.patch(`api/v1/sites/${id}/onboarding/business`, { json: { business_name: businessName || "테스트 업체" } });
+            await api.patch(`api/v1/sites/${id}/onboarding/industry`, { json: { industry: "서비스", job_module: "general" } });
+            await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: serviceList } });
+            await api.patch(`api/v1/sites/${id}/onboarding/contact`, { json: { phone: phone || "02-1234-5678", email: "", address: "", hours: "" } });
+            await api.patch(`api/v1/sites/${id}/onboarding/legal`, { json: { business_reg_number: "123-45-67890" } });
+            await api.post(`api/v1/sites/${id}/onboarding/complete`);
+            await api.post(`api/v1/sites/${id}/contract`);
+            await api.post(`api/v1/sites/${id}/preview`);
+            setSiteId(id);
+          } catch {
+            // 백엔드 저장 실패는 무시 (로컬 미리보기는 이미 표시됨)
+          }
+        })();
+      }
     } catch (err) {
       console.error(err);
       setError("프리뷰 생성에 실패했습니다");
@@ -352,8 +444,13 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                           <div className="flex h-20 items-center justify-center bg-gray-100 text-xs text-gray-400">준비 중</div>
                         )}
                         <div className="p-3">
-                          <h4 className="text-sm font-medium text-gray-900">{tpl.name}</h4>
-                          <p className="text-[10px] text-gray-500">{tpl.desc}</p>
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="text-sm font-medium text-gray-900">{tpl.name}</h4>
+                            {tpl.badge && (
+                              <Badge color="brand" size="sm">{tpl.badge}</Badge>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-gray-500">{tpl.desc}</p>
                         </div>
                       </div>
                     </div>
@@ -406,32 +503,100 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
 
             {/* 프리뷰 */}
             {phase === "preview" && (
-              <div className="text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50">
-                  <Icon name="sparkles" size={30} className="text-primary-600" />
-                </div>
-                <h2 className="mb-2 font-display text-lg font-bold text-gray-900">프리뷰가 생성되었습니다!</h2>
-                <p className="mb-6 text-sm text-gray-500">Contract JSON 기반으로 사이트 구조가 만들어졌습니다.</p>
-
-                {previewData && (
-                  <div className="mb-4 max-h-60 overflow-auto rounded-lg bg-gray-900 p-4 text-left font-mono text-[10px] text-primary-300">
-                    <pre>{JSON.stringify(previewData, null, 2)}</pre>
+              <div className="flex h-full flex-col">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h2 className="font-display text-base font-bold text-gray-900">홈페이지 프리뷰</h2>
+                    <p className="text-xs text-gray-500">아래에서 생성된 홈페이지를 확인하세요</p>
                   </div>
-                )}
-
-                <div className="flex justify-center gap-3">
-                  <Button hierarchy="secondary" size="md" onClick={onClose}>닫기</Button>
-                  <Button hierarchy="primary" size="md" onClick={handlePublish} disabled={publishing}>
-                    {publishing ? "발행 중..." : "발행하기"}
-                  </Button>
+                  {siteId && (
+                    <button
+                      onClick={() => window.open(`/preview/${siteId}`, "_blank")}
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                    >
+                      <Icon name="external-link" size={13} /> 전체화면으로 보기
+                    </button>
+                  )}
                 </div>
 
-                {publishSuccess && (
-                  <div className="mt-4 rounded-lg border border-success-200 bg-success-50 p-3">
+                {/* 템플릿 HTML + Contract JSON 결합 프리뷰 */}
+                <div className="relative mb-3 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-gray-100" style={{ minHeight: "360px" }}>
+                  {previewSrcdoc ? (
+                    <iframe
+                      srcDoc={previewSrcdoc}
+                      className="h-full w-full border-0"
+                      style={{ minHeight: "360px" }}
+                      title="사이트 프리뷰"
+                      sandbox="allow-scripts allow-same-origin"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center" style={{ minHeight: "360px" }}>
+                      <div className="text-center text-gray-400">
+                        <Icon name="sparkles" size={24} className="mx-auto mb-2 animate-pulse text-primary-400" />
+                        <p className="text-xs">템플릿 렌더링 중...</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {publishSuccess ? (
+                  <div className="rounded-lg border border-success-200 bg-success-50 p-3 text-center">
                     <p className="inline-flex items-center gap-1.5 text-sm font-medium text-success-700">
                       <Icon name="circle-check-big" size={16} /> 사이트가 성공적으로 발행되었습니다!
                     </p>
                     <p className="mt-1 text-xs text-success-600">잠시 후 대시보드로 이동합니다...</p>
+                  </div>
+                ) : pipelineMode === "aws_pipeline" && pipelineStatus === "running" ? (
+                  /* AWS 파이프라인 실행 중 — 단계별 진행 표시 */
+                  <div className="rounded-xl border border-primary-100 bg-primary-50 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-500">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                      </span>
+                      <span className="text-sm font-medium text-primary-800">파이프라인 실행 중</span>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { step: "생성 에이전트", desc: "Contract JSON → render_spec.json 변환 중", active: true },
+                        { step: "빌드 워커", desc: "정적 HTML/CSS 파일 생성", active: false },
+                        { step: "검증 에이전트", desc: "Lighthouse · Schema.org · AI 점수 검증", active: false },
+                        { step: "배포", desc: "S3 + CloudFront 배포", active: false },
+                      ].map((item, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <span className={cn(
+                            "mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full text-[9px]",
+                            item.active ? "bg-primary-500 text-white" : "bg-gray-200 text-gray-400",
+                          )}>
+                            {i + 1}
+                          </span>
+                          <div>
+                            <p className={cn("text-xs font-medium", item.active ? "text-primary-800" : "text-gray-400")}>
+                              {item.step}
+                            </p>
+                            <p className="text-[10px] text-gray-400">{item.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {pipelineMessage && (
+                      <p className="mt-3 text-[10px] text-primary-600">{pipelineMessage}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <Button hierarchy="secondary" size="md" onClick={onClose} className="flex-none">
+                      닫기
+                    </Button>
+                    <Button
+                      hierarchy="primary"
+                      size="md"
+                      onClick={handlePublish}
+                      disabled={publishing}
+                      className="flex-1"
+                      iconLeading={<Icon name="rocket" size={15} />}
+                    >
+                      {publishing ? "파이프라인 시작 중..." : "사이트 발행하기"}
+                    </Button>
                   </div>
                 )}
 

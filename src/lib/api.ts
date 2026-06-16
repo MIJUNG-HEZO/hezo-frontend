@@ -204,7 +204,68 @@ export async function completeOAuthSignup(data: {
   return api.post("api/v1/auth/oauth/complete-signup", { json: data }).json<OAuthLoginResponse>();
 }
 
-// --- Sites publish (주의: 백엔드에 publish 액션 엔드포인트 미구현 — availability만 존재) ---
-export async function publishSite(siteId: string): Promise<{ status: string; domain: string }> {
-  return api.post(`api/v1/sites/${siteId}/publish`).json<{ status: string; domain: string }>();
+// --- Sites publish & pipeline ---
+
+export interface PublishResponse {
+  site_id: string;
+  mode: "aws_pipeline" | "local";
+  pipeline_status: string;
+  execution_arn?: string;
+  message: string;
+}
+
+export interface PipelineStatusResponse {
+  site_id: string;
+  pipeline_status:
+    | "running"
+    | "generation_complete"
+    | "generation_failed"
+    | "published"
+    | "unknown";
+  render_spec_s3_key?: string;
+  execution_arn?: string;
+  updated_at?: string;
+  error?: string;
+}
+
+export async function publishSite(siteId: string): Promise<PublishResponse> {
+  return api.post(`api/v1/sites/${siteId}/publish`).json<PublishResponse>();
+}
+
+export async function getPipelineStatus(siteId: string): Promise<PipelineStatusResponse> {
+  return api.get(`api/v1/sites/${siteId}/pipeline/status`).json<PipelineStatusResponse>();
+}
+
+// --- Contract JSON ---
+
+export interface ContractContact {
+  phone: string;
+  email?: string;
+  address: string;
+  hours: { weekday: string; lunch_break?: string; saturday?: string; sunday?: string };
+  kakao?: string;
+}
+
+export interface ContractDomainData {
+  hero: { headline: string; subheadline: string; cta_text: string };
+  values: { title: string; desc: string }[];
+  services: { name: string; desc: string }[];
+  reviews: { text: string; author: string; info: string }[];
+  faq: { q: string; a: string }[];
+}
+
+export interface ContractJson {
+  template?: { category?: string; template_id?: string; slug?: string };
+  brand: { name: string; tone?: string; primary_color?: string };
+  seo?: { title_keyword?: string; target_region?: string };
+  contact: ContractContact;
+  content: {
+    landing?: { domain_data: ContractDomainData };
+  };
+  governance?: { preview_ready?: boolean };
+}
+
+/** GET /api/v1/sites/{siteId}/contract — Contract JSON 조회 */
+export async function getContractJson(siteId: string): Promise<ContractJson> {
+  return api.get(`api/v1/sites/${siteId}/contract`).json<ContractJson>();
 }

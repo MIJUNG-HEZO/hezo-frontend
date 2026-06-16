@@ -1,7 +1,8 @@
 import type { LucideProps } from "lucide-react";
 import {
   LayoutDashboard, Gauge, Quote, TrendingUp, TrendingDown, Building2, Globe,
-  ChevronDown, ChevronLeft, ChevronRight, MessageCircle, CreditCard, Settings,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, MessageCircle, CreditCard, Settings,
+  ExternalLink,
   LogOut, Play, ArrowRight, ArrowUp, ArrowLeft, Check, Lock, BadgeCheck, Leaf,
   FlaskConical, Syringe, Car, Sparkles, ShieldCheck, LineChart, WandSparkles,
   Rocket, Calendar, Bell, RefreshCw, FileText, Braces, CircleHelp, Code, Tag,
@@ -22,7 +23,9 @@ const ICONS = {
   "building-2": Building2,
   globe: Globe,
   "chevron-down": ChevronDown,
+  "chevron-up": ChevronUp,
   "chevron-left": ChevronLeft,
+  "external-link": ExternalLink,
   "chevron-right": ChevronRight,
   "message-circle": MessageCircle,
   "credit-card": CreditCard,
