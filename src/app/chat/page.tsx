@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useChatSession, MAX_REGENERATIONS } from "@/hooks/useChatSession";
+import { useChatApi } from "@/hooks/useChatApi";
 import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
+import { createSite } from "@/lib/api";
 
 type Phase = "start" | "structure" | "template" | "conversation";
 
@@ -55,18 +57,42 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [rightTab, setRightTab] = useState<"preview" | "schema">("preview");
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
 
   const { sessionState, sendMessage, requestRegeneration, startNewSession, formatTime } =
     useChatSession();
+
+  const chatApi = useChatApi(currentSiteId ?? "__no_site__");
 
   const progressItems = getProgressItems(phase);
   const currentStepNum = progressItems.filter((i) => i.status === "done").length + 1;
   const totalSteps = progressItems.length;
 
-  const handleSendMessage = () => {
-    if (!input.trim()) return;
+  const handleStartConversation = useCallback(async () => {
+    if (!currentSiteId) {
+      try {
+        const site = await createSite("새 홈페이지", selectedStructure ?? "landing");
+        setCurrentSiteId(site.id);
+      } catch {
+        setCurrentSiteId(sessionState.sessionId);
+      }
+    }
+    setPhase("conversation");
+  }, [currentSiteId, selectedStructure, sessionState.sessionId]);
+
+  const handleSendMessage = async () => {
+    if (!input.trim() || sessionState.isExpired) return;
     const canSend = sendMessage(input.trim());
-    if (canSend) setInput("");
+    if (canSend) {
+      const text = input.trim();
+      setInput("");
+      await chatApi.sendMessage(
+        sessionState.sessionId,
+        text,
+        selectedStructure ?? "",
+        selectedTemplate ?? "",
+      );
+    }
   };
 
   const handleRegeneration = () => requestRegeneration();
@@ -77,6 +103,8 @@ export default function ChatPage() {
     setSelectedStructure(null);
     setSelectedTemplate(null);
     setInput("");
+    setCurrentSiteId(null);
+    chatApi.clearMessages();
   };
 
   const canRegenerate =
@@ -288,7 +316,7 @@ export default function ChatPage() {
               <div className="flex gap-3">
                 <Button hierarchy="secondary" size="lg" onClick={() => setPhase("structure")}>← 구조 다시 선택</Button>
                 {selectedTemplate && (
-                  <Button hierarchy="primary" size="lg" onClick={() => setPhase("conversation")} className="flex-1">
+                  <Button hierarchy="primary" size="lg" onClick={handleStartConversation} className="flex-1">
                     다음: 대화 시작하기 →
                   </Button>
                 )}
@@ -298,38 +326,44 @@ export default function ChatPage() {
 
           {phase === "conversation" && (
             <div className="mx-auto flex max-w-2xl flex-col gap-3">
-              <div className="flex gap-2">
-                <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary-100">
-                  <Icon name="message-circle" size={14} className="text-primary-600" />
-                </span>
-                <div className="rounded-2xl rounded-bl-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
-                  좋습니다! <span className="font-medium">{templateOptions[selectedStructure!]?.find((t) => t.id === selectedTemplate)?.name}</span> 템플릿으로 시작할게요.
-                  <br />
-                  먼저 업체명을 알려주세요.
+              {chatApi.messages.length === 0 && (
+                <div className="flex gap-2">
+                  <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary-100">
+                    <Icon name="message-circle" size={14} className="text-primary-600" />
+                  </span>
+                  <div className="rounded-2xl rounded-bl-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
+                    안녕하세요! 어떤 비즈니스를 운영하고 계신지 알려주세요.
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-end">
-                <div className="rounded-2xl rounded-br-md bg-gray-800 px-4 py-3 text-sm text-white">Timeless Accessories</div>
-              </div>
-              <div className="flex gap-2">
-                <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary-100">
-                  <Icon name="message-circle" size={14} className="text-primary-600" />
-                </span>
-                <div className="rounded-2xl rounded-bl-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
-                  핵심 상품이나 서비스를 알려주세요. (최대 5개)
+              )}
+              {chatApi.messages.map((msg, i) =>
+                msg.role === "user" ? (
+                  <div key={i} className="flex justify-end">
+                    <div className="rounded-2xl rounded-br-md bg-gray-800 px-4 py-3 text-sm text-white">{msg.content}</div>
+                  </div>
+                ) : (
+                  <div key={i} className="flex gap-2">
+                    <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary-100">
+                      <Icon name="message-circle" size={14} className="text-primary-600" />
+                    </span>
+                    <div className="rounded-2xl rounded-bl-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
+                      {msg.content}
+                    </div>
+                  </div>
+                ),
+              )}
+              {chatApi.loading && (
+                <div className="flex gap-2">
+                  <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary-100">
+                    <Icon name="message-circle" size={14} className="text-primary-600" />
+                  </span>
+                  <div className="flex items-center gap-1 rounded-2xl rounded-bl-md border border-gray-200 bg-white px-4 py-3">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.3s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.15s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" />
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-end">
-                <div className="rounded-2xl rounded-br-md bg-gray-800 px-4 py-3 text-sm text-white">가죽가방, 쥬얼리, 시계</div>
-              </div>
-              <div className="flex gap-2">
-                <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary-100">
-                  <Icon name="message-circle" size={14} className="text-primary-600" />
-                </span>
-                <div className="rounded-2xl rounded-bl-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
-                  연락처(전화번호, 이메일)를 알려주세요.
-                </div>
-              </div>
+              )}
 
               {sessionState.isExpired && (
                 <div className="flex flex-col items-center gap-3 py-6">
@@ -354,7 +388,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSendMessage();
+                  if (e.key === "Enter") void handleSendMessage();
                 }}
                 placeholder={sessionState.isExpired ? "세션이 만료되었습니다" : "메시지를 입력하세요..."}
                 disabled={sessionState.isExpired}
@@ -366,8 +400,8 @@ export default function ChatPage() {
                 )}
               />
               <button
-                onClick={handleSendMessage}
-                disabled={sessionState.isExpired || !input.trim()}
+                onClick={() => void handleSendMessage()}
+                disabled={sessionState.isExpired || !input.trim() || chatApi.loading}
                 className={cn(
                   "flex h-9 w-9 flex-none items-center justify-center rounded-full transition-colors",
                   sessionState.isExpired || !input.trim()

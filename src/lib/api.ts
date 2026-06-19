@@ -101,6 +101,11 @@ export interface SiteSummary {
   published_at: string | null;
 }
 
+/** POST /api/v1/sites — 새 사이트 생성 */
+export async function createSite(name: string, siteType = "landing"): Promise<SiteSummary> {
+  return api.post("api/v1/sites", { json: { name, site_type: siteType } }).json<SiteSummary>();
+}
+
 /** GET /api/v1/sites — 백엔드는 { items, total } 형태로 응답한다. */
 export async function getSites(): Promise<SiteSummary[]> {
   const res = await api
