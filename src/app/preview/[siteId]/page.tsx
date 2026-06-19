@@ -38,7 +38,8 @@ export default function PreviewPage() {
     }
     if (
       pipelineStatus.pipeline_status === "generation_failed" ||
-      pipelineStatus.pipeline_status === "failed"
+      pipelineStatus.pipeline_status === "failed" ||
+      pipelineStatus.pipeline_status === "rolled_back"
     ) {
       setPublishing(false);
       setPipelineStarted(false);

@@ -249,6 +249,8 @@ export interface PipelineStatusResponse {
     | "running"
     | "generation_complete"
     | "generation_failed"
+    | "failed"
+    | "rolled_back"
     | "published"
     | "unknown";
   render_spec_s3_key?: string;

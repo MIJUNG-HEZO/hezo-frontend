@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { getSubscriptionStatus } from "@/lib/api";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
@@ -88,7 +89,7 @@ export default function BillingPanel({ isOpen, onClose, onUpgrade }: BillingPane
 
   const planInfo = status ? PLAN_DISPLAY[status.plan] : null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[90] flex">
       <div className="absolute inset-0 bg-[var(--surface-overlay)]" onClick={onClose} />
 
@@ -184,6 +185,7 @@ export default function BillingPanel({ isOpen, onClose, onUpgrade }: BillingPane
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
