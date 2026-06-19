@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { upgradePlan } from "@/lib/api";
-import { isCheckoutConfigured, startCheckout } from "@/lib/billing";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +52,8 @@ function PricingModalContent({
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(targetPlan ?? null);
   const [completed, setCompleted] = useState(false);
+  const [pgOpen, setPgOpen] = useState(false);
+  const [pgProgress, setPgProgress] = useState(0);
 
   function getButtonState(planId: string): {
     label: string;
@@ -110,23 +111,27 @@ function PricingModalContent({
     setError(null);
     setSelectedPlan(planId);
 
-    try {
-      if (isCheckoutConfigured()) {
-        // PG 창 열기 (보여주기용 — 성공 시 redirect, 닫기/취소 시 catch로 완료 처리)
-        try {
-          await startCheckout(planId);
-        } catch {
-          // PG 창이 닫히면(취소/닫기) 결제 완료로 간주
+    // PG 창 열기 → 프로그레스 채우며 자동 닫기
+    setPgProgress(0);
+    setPgOpen(true);
+
+    await new Promise<void>((resolve) => {
+      let prog = 0;
+      const id = setInterval(() => {
+        prog += 4;
+        setPgProgress(Math.min(prog, 100));
+        if (prog >= 100) {
+          clearInterval(id);
+          resolve();
         }
-        // PG 창 닫힘 → dev 엔드포인트로 플랜 반영 후 완료 화면 표시
-        await upgradePlan(planId);
-        setLoading(false);
-        onSelect(planId);
-        setCompleted(true);
-        if (onSuccess) onSuccess();
-        return;
-      }
-      // 로컬/개발: dev 엔드포인트로 즉시 업그레이드
+      }, 100);
+    });
+
+    setPgOpen(false);
+
+    await new Promise((r) => setTimeout(r, 300));
+
+    try {
       await upgradePlan(planId);
       setLoading(false);
       onSelect(planId);
@@ -186,6 +191,70 @@ function PricingModalContent({
       features: ["Pro의 모든 기능에 다음 포함:", "전용 VPC 인프라 (완전 격리)", "SLA 99.9% 가용성 보장", "Tier 3 외부 실측 + 실시간 알림", "전담 매니저 배정", "맞춤 API 연동 지원", "Shield Advanced 보안 옵션"],
     },
   ];
+
+  if (pgOpen) {
+    const planPrice: Record<string, string> = { pro: "₩49,000", max: "₩190,000" };
+    const planName: Record<string, string> = { pro: "Pro", max: "Max" };
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div className="w-[360px] overflow-hidden rounded-2xl bg-white shadow-2xl">
+          {/* PG 헤더 */}
+          <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500">
+                <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 7h10M7 2v10" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <span className="text-sm font-bold text-gray-700">Toss Payments</span>
+            </div>
+            <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-600">
+              보안 결제
+            </span>
+          </div>
+
+          {/* 결제 정보 */}
+          <div className="px-5 py-5">
+            <div className="mb-4 rounded-xl bg-gray-50 p-4">
+              <p className="text-xs text-gray-400">결제 상품</p>
+              <p className="mt-0.5 font-semibold text-gray-900">HEZO {planName[selectedPlan ?? ""] ?? selectedPlan} 플랜</p>
+              <p className="mt-2 font-display text-2xl font-bold text-gray-900">
+                {planPrice[selectedPlan ?? ""] ?? ""}
+                <span className="ml-1 text-sm font-normal text-gray-400">/ 월</span>
+              </p>
+            </div>
+
+            {/* 카드 입력 영역 (더미) */}
+            <div className="mb-4 space-y-2.5">
+              <div className="flex h-10 items-center rounded-lg border border-gray-200 bg-gray-50 px-3">
+                <Icon name="credit-card" size={14} className="mr-2 text-gray-400" />
+                <span className="text-sm text-gray-300">카드 번호</span>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex h-10 flex-1 items-center rounded-lg border border-gray-200 bg-gray-50 px-3">
+                  <span className="text-sm text-gray-300">유효기간</span>
+                </div>
+                <div className="flex h-10 flex-1 items-center rounded-lg border border-gray-200 bg-gray-50 px-3">
+                  <span className="text-sm text-gray-300">CVC</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 프로그레스 바 */}
+            <div className="overflow-hidden rounded-full bg-gray-100 h-1.5 mb-2">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all duration-100"
+                style={{ width: `${pgProgress}%` }}
+              />
+            </div>
+            <p className="text-center text-xs text-gray-400">
+              {pgProgress < 60 ? "결제 정보 확인 중..." : pgProgress < 90 ? "카드사 승인 요청 중..." : "결제 승인 완료 중..."}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (completed) {
     const planLabel: Record<string, string> = { pro: "Pro", max: "Max" };
