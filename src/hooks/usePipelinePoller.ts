@@ -34,7 +34,9 @@ export function usePipelinePoller(siteId: string | null, enabled: boolean) {
 
   const done =
     status?.pipeline_status === "published" ||
-    status?.pipeline_status === "generation_failed";
+    status?.pipeline_status === "generation_failed" ||
+    status?.pipeline_status === "failed" ||
+    status?.pipeline_status === "rolled_back";
 
   return { status, polling: polling && !done };
 }

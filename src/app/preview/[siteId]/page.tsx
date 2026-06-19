@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/Icon";
 import { getContractJson, getSubscriptionStatus, publishSite, type ContractJson } from "@/lib/api";
 import { renderTemplate } from "@/lib/templateRenderer";
 import PricingModal from "@/components/chat/PricingModal";
+import { usePipelinePoller } from "@/hooks/usePipelinePoller";
 import { cn } from "@/lib/utils";
 
 export default function PreviewPage() {
@@ -22,8 +23,28 @@ export default function PreviewPage() {
   const [userPlan, setUserPlan] = useState<"free" | "pro" | "max">("free");
   const [canPublish, setCanPublish] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [publishSuccess, setPublishSuccess] = useState(false);
+  const [pipelineStarted, setPipelineStarted] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [showPricing, setShowPricing] = useState(false);
+
+  // Step Functions 실행 중일 때만 폴링 (3초 간격)
+  const { status: pipelineStatus } = usePipelinePoller(siteId, pipelineStarted);
+
+  // 파이프라인 완료 시 대시보드 이동
+  useEffect(() => {
+    if (!pipelineStatus) return;
+    if (pipelineStatus.pipeline_status === "published") {
+      setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+    }
+    if (
+      pipelineStatus.pipeline_status === "generation_failed" ||
+      pipelineStatus.pipeline_status === "failed"
+    ) {
+      setPublishing(false);
+      setPipelineStarted(false);
+      setPublishError("홈페이지 생성에 실패했습니다. 다시 시도해주세요.");
+    }
+  }, [pipelineStatus]);
 
   useEffect(() => {
     async function load() {
@@ -37,7 +58,6 @@ export default function PreviewPage() {
         ]);
         setContract(ct);
 
-        // 선택된 템플릿 + Contract JSON 결합
         const templateId = ct.template?.template_id;
         const structure = ct.template?.category;
         const html = await renderTemplate(ct, templateId, structure);
@@ -53,17 +73,23 @@ export default function PreviewPage() {
 
   const doPublish = useCallback(async () => {
     setPublishing(true);
+    setPublishError(null);
     try {
-      await publishSite(siteId);
-      setPublishSuccess(true);
-      setTimeout(() => { window.location.href = "/dashboard"; }, 2000);
+      const res = await publishSite(siteId);
+      if (res.mode === "aws_pipeline") {
+        // Step Functions 파이프라인 시작 — 폴링으로 완료 대기
+        setPipelineStarted(true);
+      } else {
+        // 로컬 모드 — 즉시 완료
+        setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+      }
     } catch (err: unknown) {
+      setPublishing(false);
       if (err && typeof err === "object" && "response" in err) {
         const res = (err as { response: Response }).response;
-        if (res.status === 403) setShowPricing(true);
+        if (res.status === 403) { setShowPricing(true); return; }
       }
-    } finally {
-      setPublishing(false);
+      setPublishError("발급 요청에 실패했습니다. 다시 시도해주세요.");
     }
   }, [siteId]);
 
@@ -71,6 +97,16 @@ export default function PreviewPage() {
     if (!canPublish) { setShowPricing(true); return; }
     doPublish();
   }, [canPublish, doPublish]);
+
+  const publishDone = pipelineStatus?.pipeline_status === "published";
+
+  const publishingLabel = () => {
+    if (!pipelineStarted) return "발급 중...";
+    const s = pipelineStatus?.pipeline_status;
+    if (s === "running") return "AI 홈페이지 생성 중...";
+    if (s === "published") return "발급 완료!";
+    return "파이프라인 실행 중...";
+  };
 
   /* ── 로딩 ── */
   if (loading) {
@@ -114,7 +150,7 @@ export default function PreviewPage() {
               <span className="hidden text-xs text-gray-400 sm:inline">프리뷰 모드</span>
               <span className="text-xs text-gray-400">·</span>
               <span className="text-xs font-medium text-gray-300">{brandName}</span>
-              {publishSuccess ? (
+              {publishDone ? (
                 <span className="rounded-full bg-success-500/20 px-2 py-0.5 text-[10px] font-medium text-success-400">
                   발급 완료 ✓
                 </span>
@@ -126,15 +162,18 @@ export default function PreviewPage() {
             </div>
           </div>
 
-          {/* 우측: 액션 버튼 */}
+          {/* 우측: 액션 버튼 + 에러 */}
           <div className="flex items-center gap-2">
+            {publishError && (
+              <span className="text-xs text-red-400">{publishError}</span>
+            )}
             <button
               onClick={() => window.open(window.location.href, "_blank")}
               className="hidden items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-400 hover:border-gray-600 hover:text-gray-200 sm:flex"
             >
               <Icon name="external-link" size={12} /> 새 탭
             </button>
-            {publishSuccess ? (
+            {publishDone ? (
               <span className="text-xs text-success-400">대시보드로 이동 중...</span>
             ) : (
               <button
@@ -149,7 +188,7 @@ export default function PreviewPage() {
               >
                 {publishing ? (
                   <span className="flex items-center gap-1.5">
-                    <Icon name="refresh-cw" size={13} className="animate-spin" /> 발급 중...
+                    <Icon name="refresh-cw" size={13} className="animate-spin" /> {publishingLabel()}
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5">
