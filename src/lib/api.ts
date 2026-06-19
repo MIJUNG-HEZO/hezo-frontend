@@ -269,3 +269,39 @@ export interface ContractJson {
 export async function getContractJson(siteId: string): Promise<ContractJson> {
   return api.get(`api/v1/sites/${siteId}/contract`).json<ContractJson>();
 }
+
+// --- Chat API ---
+
+export interface ChatRequest {
+  session_id: string;
+  user_message: string;
+  domain?: string;
+  template_id?: string;
+}
+
+export interface ChatResponse {
+  session_id: string;
+  assistant_message: string;
+  turn_status: "answer_accepted" | "answer_rejected" | "ready_for_contract_compile";
+  next_stage: "proactive_questioning" | "contract_compile" | "retry_answer";
+  slot_filled?: Record<string, unknown>;
+  missing_slots?: string[];
+  mock?: boolean;
+}
+
+export async function sendChatMessage(siteId: string, payload: ChatRequest): Promise<ChatResponse> {
+  return api.post(`api/v1/sites/${siteId}/chat`, { json: payload }).json<ChatResponse>();
+}
+
+// --- Preview API ---
+
+export interface PreviewResponse {
+  site_id: string;
+  preview_mode: "triggered" | "mock";
+  preview_url?: string;
+  message: string;
+}
+
+export async function triggerPreview(siteId: string): Promise<PreviewResponse> {
+  return api.post(`api/v1/sites/${siteId}/preview`).json<PreviewResponse>();
+}
