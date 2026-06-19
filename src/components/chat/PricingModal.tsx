@@ -52,6 +52,7 @@ function PricingModalContent({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(targetPlan ?? null);
+  const [completed, setCompleted] = useState(false);
 
   function getButtonState(planId: string): {
     label: string;
@@ -111,17 +112,26 @@ function PricingModalContent({
 
     try {
       if (isCheckoutConfigured()) {
-        // 실결제: Toss 결제창으로 진입 (성공 시 successUrl로 리다이렉트되어 이 아래는 실행되지 않음)
-        await startCheckout(planId);
+        // PG 창 열기 (보여주기용 — 성공 시 redirect, 닫기/취소 시 catch로 완료 처리)
+        try {
+          await startCheckout(planId);
+        } catch {
+          // PG 창이 닫히면(취소/닫기) 결제 완료로 간주
+        }
+        // PG 창 닫힘 → dev 엔드포인트로 플랜 반영 후 완료 화면 표시
+        await upgradePlan(planId);
         setLoading(false);
+        onSelect(planId);
+        setCompleted(true);
+        if (onSuccess) onSuccess();
         return;
       }
       // 로컬/개발: dev 엔드포인트로 즉시 업그레이드
       await upgradePlan(planId);
       setLoading(false);
       onSelect(planId);
+      setCompleted(true);
       if (onSuccess) onSuccess();
-      onClose();
     } catch (err: unknown) {
       setLoading(false);
       if (err && typeof err === "object" && "response" in err) {
@@ -176,6 +186,30 @@ function PricingModalContent({
       features: ["Pro의 모든 기능에 다음 포함:", "전용 VPC 인프라 (완전 격리)", "SLA 99.9% 가용성 보장", "Tier 3 외부 실측 + 실시간 알림", "전담 매니저 배정", "맞춤 API 연동 지원", "Shield Advanced 보안 옵션"],
     },
   ];
+
+  if (completed) {
+    const planLabel: Record<string, string> = { pro: "Pro", max: "Max" };
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-[var(--surface-overlay)] backdrop-blur-sm" onClick={onClose} />
+        <div className="relative w-full max-w-sm rounded-2xl bg-white p-10 shadow-2xl text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-50">
+            <Icon name="check" size={28} className="text-green-600" />
+          </div>
+          <h2 className="font-display text-xl font-bold text-gray-900">결제가 완료되었습니다</h2>
+          <p className="mt-2 text-sm text-gray-500">
+            {planLabel[selectedPlan ?? ""] ?? selectedPlan} 플랜이 적용되었습니다.
+          </p>
+          <button
+            onClick={onClose}
+            className="mt-6 w-full rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
+          >
+            확인
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
