@@ -167,6 +167,22 @@ export async function createCheckout(planKeyOrCode: string): Promise<BillingChec
     .json<BillingCheckoutResponse>();
 }
 
+export interface BillingConfirmResponse {
+  payment_request_id: string;
+  plan_code: string;
+  amount: number;
+  status: string;
+}
+
+/** POST /api/v1/billing/confirm — Toss 결제 승인 + 플랜 업그레이드. */
+export async function confirmPayment(params: {
+  paymentKey: string;
+  orderId: string;
+  amount: number;
+}): Promise<BillingConfirmResponse> {
+  return api.post("api/v1/billing/confirm", { json: params }).json<BillingConfirmResponse>();
+}
+
 // --- Profile / Account API ---
 
 /** PATCH /api/v1/users/me — 이름/전화번호 수정 (둘 다 선택). */
@@ -177,6 +193,14 @@ export async function updateProfile(data: { name?: string; phone?: string | null
 /** DELETE /api/v1/auth/me — 회원 탈퇴(계정 영구 삭제). */
 export async function deleteAccount(): Promise<void> {
   await api.delete("api/v1/auth/me");
+}
+
+/** PATCH /api/v1/auth/me/password — 비밀번호 변경. */
+export async function changePassword(data: {
+  current_password: string;
+  new_password: string;
+}): Promise<void> {
+  await api.patch("api/v1/auth/me/password", { json: data });
 }
 
 /** POST /api/v1/auth/logout — refresh 토큰 무효화(쿠키 기반, best-effort). */

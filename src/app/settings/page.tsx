@@ -10,6 +10,7 @@ import {
   getSubscriptionStatus,
   updateProfile,
   deleteAccount,
+  changePassword,
   getApiErrorMessage,
 } from "@/lib/api";
 import { logout } from "@/lib/auth-guard";
@@ -64,6 +65,8 @@ export default function SettingsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const {
     register,
@@ -145,18 +148,22 @@ export default function SettingsPage() {
     }
   };
 
-  const onPasswordSubmit = (data: PasswordFormData) => {
-    const result = passwordSchema.safeParse(data);
-    if (!result.success) {
-      for (const issue of result.error.issues) {
-        const field = issue.path[0] as keyof PasswordFormData;
-        if (field) setError(field, { message: issue.message });
-      }
-      return;
+  const onPasswordSubmit = async (data: PasswordFormData) => {
+    setPasswordError(null);
+    setPasswordLoading(true);
+    try {
+      await changePassword({
+        current_password: data.currentPassword,
+        new_password: data.newPassword,
+      });
+      setPasswordSuccess(true);
+      reset();
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (err) {
+      setPasswordError(await getApiErrorMessage(err, "비밀번호 변경에 실패했습니다."));
+    } finally {
+      setPasswordLoading(false);
     }
-    setPasswordSuccess(true);
-    reset();
-    setTimeout(() => setPasswordSuccess(false), 3000);
   };
 
   const planKey = sub?.plan ?? "free";
@@ -261,12 +268,17 @@ export default function SettingsPage() {
           )}
         </Card>
 
-        {/* 비밀번호 변경 (백엔드 엔드포인트 미제공 — 클라이언트 검증만) */}
+        {/* 비밀번호 변경 */}
         <Card>
           <h2 className="mb-4 font-display text-lg font-semibold text-gray-900">비밀번호 변경</h2>
           {passwordSuccess && (
             <div className="mb-4 rounded-lg border border-success-200 bg-success-50 px-3 py-3">
               <p className="text-sm text-success-700">비밀번호가 성공적으로 변경되었습니다.</p>
+            </div>
+          )}
+          {passwordError && (
+            <div className="mb-4 rounded-lg border border-error-200 bg-error-50 px-3 py-3">
+              <p className="text-sm text-error-600">{passwordError}</p>
             </div>
           )}
           <form onSubmit={handleSubmit(onPasswordSubmit)} className="flex flex-col gap-4">
@@ -310,7 +322,9 @@ export default function SettingsPage() {
               )}
             </div>
             <div>
-              <Button type="submit" hierarchy="primary" size="md">비밀번호 변경</Button>
+              <Button type="submit" hierarchy="primary" size="md" disabled={passwordLoading}>
+                {passwordLoading ? "변경 중..." : "비밀번호 변경"}
+              </Button>
             </div>
           </form>
         </Card>
