@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useChatSession, MAX_REGENERATIONS } from "@/hooks/useChatSession";
 import { useChatApi } from "@/hooks/useChatApi";
-import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
-import { createSite } from "@/lib/api";
+import { createSite, triggerPreview } from "@/lib/api";
 
 type Phase = "start" | "structure" | "template" | "conversation";
 
@@ -30,34 +30,40 @@ function getProgressItems(phase: Phase) {
 
 const structureOptions: { id: string; label: string; desc: string; icon: IconName; recommended?: boolean }[] = [
   { id: "landing", label: "랜딩페이지", desc: "한 페이지로 핵심 메시지 전달.\n서비스/브랜드 소개에 적합.", icon: "monitor", recommended: true },
-  { id: "multi", label: "일반 홈페이지", desc: "여러 페이지로 상세 정보 전달.\n기업, 클리닉 등에 적합.", icon: "file-text" },
+  { id: "blog", label: "일반 홈페이지", desc: "여러 페이지로 상세 정보 전달.\n기업, 클리닉 등에 적합.", icon: "file-text" },
   { id: "store", label: "스토어", desc: "상품/메뉴 카탈로그 중심.\n식당, 쇼핑몰에 적합.", icon: "shopping-cart" },
 ];
 
 const templateOptions: Record<string, { id: string; name: string; desc: string }[]> = {
   landing: [
-    { id: "luxury-accessory", name: "Luxury Accessory", desc: "프리미엄 액세서리 브랜드용 랜딩" },
-    { id: "medical-clinic", name: "Medical Clinic", desc: "병원/한의원 진료 안내 랜딩" },
-    { id: "consulting", name: "Consulting Firm", desc: "컨설팅/전문직 소개 랜딩" },
+    { id: "dental-clinic", name: "치과/의원", desc: "치과·의원 진료 안내 랜딩" },
+    { id: "saas-startup", name: "SaaS/스타트업", desc: "B2B SaaS 제품 소개 랜딩" },
+    { id: "bootcamp", name: "교육/부트캠프", desc: "강의·교육 프로그램 소개 랜딩" },
+    { id: "restaurant-franchise", name: "요식업/프랜차이즈", desc: "레스토랑·프랜차이즈 브랜드 랜딩" },
+    { id: "law-firm", name: "법률/전문직", desc: "법무법인·전문직 서비스 소개" },
+    { id: "beauty-salon", name: "뷰티/살롱", desc: "헤어·뷰티 샵 안내 랜딩" },
   ],
-  multi: [
-    { id: "corporate", name: "Corporate", desc: "기업 소개 멀티페이지" },
-    { id: "portfolio", name: "Portfolio", desc: "포트폴리오/작업물 멀티페이지" },
+  blog: [
+    { id: "corporate", name: "기업 소개", desc: "회사 소개·채용 멀티페이지" },
+    { id: "portfolio", name: "포트폴리오", desc: "작업물·경력 소개 멀티페이지" },
+    { id: "developer-docs", name: "개발자 블로그", desc: "기술 블로그·문서 사이트" },
   ],
   store: [
-    { id: "restaurant", name: "Restaurant", desc: "식당/카페 메뉴 스토어" },
-    { id: "ecommerce", name: "E-Commerce", desc: "소규모 쇼핑몰 스토어" },
+    { id: "cafe-menu", name: "카페/음료", desc: "카페·디저트 메뉴 스토어" },
+    { id: "fashion-select", name: "패션/셀렉트샵", desc: "의류·액세서리 소규모 쇼핑몰" },
+    { id: "food-delivery", name: "배달/포장", desc: "배달 음식점·포장 전문점" },
   ],
 };
 
 export default function ChatPage() {
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("start");
   const [selectedStructure, setSelectedStructure] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [rightTab, setRightTab] = useState<"preview" | "schema">("preview");
-  const [showPricingModal, setShowPricingModal] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
+  const [redirectingToPreview, setRedirectingToPreview] = useState(false);
 
   const { sessionState, sendMessage, requestRegeneration, startNewSession, formatTime } =
     useChatSession();
@@ -79,6 +85,16 @@ export default function ChatPage() {
     }
     setPhase("conversation");
   }, [currentSiteId, selectedStructure, sessionState.sessionId]);
+
+  // 대화 완료 시 P3 preview 트리거 + /preview 이동
+  useEffect(() => {
+    if (chatApi.turnStatus === "ready_for_contract_compile" && currentSiteId && !redirectingToPreview) {
+      setRedirectingToPreview(true);
+      triggerPreview(currentSiteId).catch(() => {}); // non-blocking
+      const t = setTimeout(() => router.push(`/preview/${currentSiteId}`), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [chatApi.turnStatus, currentSiteId, redirectingToPreview, router]);
 
   const handleSendMessage = async () => {
     if (!input.trim() || sessionState.isExpired) return;
@@ -365,7 +381,25 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {sessionState.isExpired && (
+              {chatApi.turnStatus === "ready_for_contract_compile" && currentSiteId && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <div className="rounded-xl border border-success-200 bg-success-50 px-5 py-4 text-center">
+                    <p className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-success-700">
+                      <Icon name="check" size={14} /> 정보 수집 완료!
+                    </p>
+                    <p className="text-xs text-success-600">프리뷰를 생성하고 있습니다...</p>
+                  </div>
+                  <Button
+                    hierarchy="primary"
+                    size="md"
+                    onClick={() => router.push(`/preview/${currentSiteId}`)}
+                  >
+                    프리뷰 보기 →
+                  </Button>
+                </div>
+              )}
+
+              {sessionState.isExpired && chatApi.turnStatus !== "ready_for_contract_compile" && (
                 <div className="flex flex-col items-center gap-3 py-6">
                   <div className="rounded-xl border border-error-200 bg-error-50 px-5 py-4 text-center">
                     <p className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-error-700">
@@ -489,14 +523,14 @@ export default function ChatPage() {
                   ? `${templateOptions[selectedStructure!]?.find((t) => t.id === selectedTemplate)?.name} 템플릿`
                   : "랜딩페이지 템플릿"}
               </p>
-              {phase === "conversation" && (
+              {phase === "conversation" && currentSiteId && chatApi.turnStatus === "ready_for_contract_compile" && (
                 <Button
                   hierarchy="primary"
                   size="md"
-                  onClick={() => setShowPricingModal(true)}
+                  onClick={() => router.push(`/preview/${currentSiteId}`)}
                   className="mt-4 w-full"
                 >
-                  사이트 발급하기
+                  프리뷰 보기 →
                 </Button>
               )}
             </div>
@@ -518,11 +552,6 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <PricingModal
-        isOpen={showPricingModal}
-        onClose={() => setShowPricingModal(false)}
-        onSelect={() => setShowPricingModal(false)}
-      />
     </div>
   );
 }
