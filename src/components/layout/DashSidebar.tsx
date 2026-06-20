@@ -265,6 +265,7 @@ export function DashSidebar({ onHide }: { onHide?: () => void }) {
           setIsPricingOpen(false);
           setUpgradePlan(null);
         }}
+        currentPlan={plan}
         targetPlan={upgradePlan as "pro" | "max" | undefined}
       />
     </>
