@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: HEZO 기획서
+    url: https://github.com/MIJUNG-HEZO/hezo-frontend/blob/main/FRONTEND_SPEC.md
+    about: 프론트엔드 스펙 문서를 먼저 확인해주세요.
