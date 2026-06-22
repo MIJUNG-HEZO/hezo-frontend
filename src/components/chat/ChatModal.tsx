@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { api, getSubscriptionStatus, publishSite, getPipelineStatus } from "@/lib/api";
+import { useState, useEffect, useRef } from "react";
+import { api, getSubscriptionStatus, publishSite, getPipelineStatus, sendChatMessage } from "@/lib/api";
 import { renderTemplate } from "@/lib/templateRenderer";
 import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -111,9 +111,20 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setSiteId(propSiteId);
   }
 
+  // 레거시 폼 상태 (buildLocalContract용 보존)
   const [businessName, setBusinessName] = useState("");
   const [services, setServices] = useState("");
   const [phone, setPhone] = useState("");
+
+  // P1 LLM 챗봇 대화 상태
+  type ChatMessage = { role: "user" | "assistant"; content: string };
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [currentSlot, setCurrentSlot] = useState("business_name");
+  const [chatSessionId] = useState(() => `chat-${Date.now()}`);
+  const [slotFilled, setSlotFilled] = useState<Record<string, unknown>>({});
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const [previewSrcdoc, setPreviewSrcdoc] = useState<string | null>(null);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
@@ -130,6 +141,21 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
       .then((status) => setCurrentPlan(status.plan))
       .catch(() => {});
   }, []);
+
+  // conversation 단계 진입 시 초기 인사 메시지
+  useEffect(() => {
+    if (phase === "conversation" && chatMessages.length === 0) {
+      setChatMessages([{
+        role: "assistant",
+        content: "안녕하세요! 홈페이지 제작을 시작할게요. 먼저 업체명(상호명)을 알려주세요.",
+      }]);
+    }
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 새 메시지 도착 시 스크롤
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   // 파이프라인 폴링 (AWS 모드에서만)
   useEffect(() => {
@@ -240,7 +266,45 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setPhase("conversation");
   };
 
-  const handleConversationComplete = async () => {
+  const handleChatSend = async () => {
+    const msg = chatInput.trim();
+    if (!msg || chatSending) return;
+
+    setChatMessages((prev) => [...prev, { role: "user", content: msg }]);
+    setChatInput("");
+    setChatSending(true);
+
+    try {
+      const templateParts = (selectedTemplate || "").split("/");
+      const res = await sendChatMessage(siteId || propSiteId || "temp", {
+        session_id: chatSessionId,
+        user_message: msg,
+        answered_slot: currentSlot,
+        domain: templateParts[0] || "general",
+        domain_label: templateParts[0] === "landing" ? "랜딩페이지" : templateParts[0] || "",
+        category: selectedStructure || "landing",
+        template_id: selectedTemplate || "",
+      });
+
+      setChatMessages((prev) => [...prev, { role: "assistant", content: res.assistant_message }]);
+      if (res.current_slot) setCurrentSlot(res.current_slot);
+      if (res.slot_filled) setSlotFilled(res.slot_filled);
+
+      if (res.next_stage === "contract_compile") {
+        // 슬롯 채우기 완료 → 로컬 데이터로 프리뷰 생성
+        setTimeout(() => handleConversationComplete(res.slot_filled), 800);
+      }
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "일시적인 오류가 발생했습니다. 다시 입력해 주세요." },
+      ]);
+    } finally {
+      setChatSending(false);
+    }
+  };
+
+  const handleConversationComplete = async (overrideSlots?: Record<string, unknown>) => {
     if (!selectedTemplate) {
       setError("템플릿을 먼저 선택해 주세요.");
       return;
@@ -248,8 +312,13 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setLoading(true);
     setError("");
     try {
-      // 1. 로컬 Contract JSON으로 즉시 미리보기 생성 (백엔드 불필요)
-      const localContract = buildLocalContract(businessName, services, phone, selectedTemplate);
+      // 슬롯 데이터로 로컬 Contract JSON 생성 (AgentCore 응답 또는 폼 데이터)
+      const slots = overrideSlots || slotFilled;
+      const bName = (slots.business_name as string) || businessName || "My Business";
+      const svcStr = (slots.core_services as string) || services || "";
+      const phoneStr = (slots.contact_method as string) || phone || "";
+
+      const localContract = buildLocalContract(bName, svcStr, phoneStr, selectedTemplate);
       const html = await renderTemplate(
         localContract as unknown as Parameters<typeof renderTemplate>[0],
         selectedTemplate,
@@ -473,31 +542,68 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
               </div>
             )}
 
-            {/* 대화 */}
+            {/* 대화 — P1 LLM 챗봇 */}
             {phase === "conversation" && (
-              <div className="flex max-w-md flex-col gap-4">
-                <p className="text-sm text-gray-600">아래 정보를 입력하면 바로 프리뷰가 생성됩니다.</p>
-                <div>
-                  <label className="mb-1 block text-xs text-gray-500">업체명</label>
-                  <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="예: 바른한의원" />
+              <div className="flex h-full flex-col">
+                {/* 메시지 목록 */}
+                <div className="flex-1 space-y-3 overflow-y-auto pb-2">
+                  {chatMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex",
+                        msg.role === "user" ? "justify-end" : "justify-start",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+                          msg.role === "user"
+                            ? "bg-primary-500 text-white"
+                            : "bg-gray-100 text-gray-800",
+                        )}
+                      >
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                  {chatSending && (
+                    <div className="flex justify-start">
+                      <div className="flex gap-1 rounded-2xl bg-gray-100 px-4 py-3">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs text-gray-500">핵심 서비스 (쉼표 구분)</label>
-                  <Input value={services} onChange={(e) => setServices(e.target.value)} placeholder="예: 침 치료, 추나요법, 한약 처방" />
+
+                {/* 입력창 */}
+                <div className="mt-3 flex gap-2 border-t pt-3">
+                  <Input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleChatSend();
+                      }
+                    }}
+                    placeholder="메시지를 입력하세요..."
+                    disabled={chatSending}
+                    className="flex-1"
+                  />
+                  <Button
+                    hierarchy="primary"
+                    size="md"
+                    onClick={handleChatSend}
+                    disabled={chatSending || !chatInput.trim()}
+                    iconLeading={<Icon name="arrow-up" size={15} />}
+                  >
+                    전송
+                  </Button>
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs text-gray-500">전화번호</label>
-                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="예: 02-123-4567" />
-                </div>
-                <Button
-                  hierarchy="primary"
-                  size="lg"
-                  onClick={handleConversationComplete}
-                  disabled={loading}
-                  className="w-full"
-                >
-                  {loading ? "프리뷰 생성 중..." : "프리뷰 생성하기 →"}
-                </Button>
               </div>
             )}
 

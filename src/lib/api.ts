@@ -306,7 +306,10 @@ export async function getContractJson(siteId: string): Promise<ContractJson> {
 export interface ChatRequest {
   session_id: string;
   user_message: string;
+  answered_slot?: string;
   domain?: string;
+  domain_label?: string;
+  category?: string;
   template_id?: string;
 }
 
@@ -317,6 +320,7 @@ export interface ChatResponse {
   next_stage: "proactive_questioning" | "contract_compile" | "retry_answer";
   slot_filled?: Record<string, unknown>;
   missing_slots?: string[];
+  current_slot?: string;
   mock?: boolean;
 }
 
