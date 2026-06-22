@@ -327,31 +327,31 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
 
   const handleConversationComplete = async (overrideSlots?: Record<string, unknown>) => {
     const id = siteId || propSiteId;
-    if (!id || !selectedTemplate) return;
-
     const slots = overrideSlots || slotFilled;
     const kakaoRaw = (slots.kakao_channel as string) || "";
 
-    // 슬롯 저장 (P3 preview에 필요)
-    try {
-      await api.patch(`api/v1/sites/${id}/onboarding/slots`, {
-        json: {
-          business_name:   (slots.business_name as string) || "",
-          business_region: (slots.business_region as string) || "",
-          core_services:   (slots.core_services as string) || "",
-          target_audience: (slots.target_audience as string) || "",
-          phone:           (slots.phone as string) || "",
-          kakao_channel:   kakaoRaw !== "없음" ? kakaoRaw : "",
-          business_hours:  (slots.business_hours as string) || "평일 09:00-18:00",
-          template_id:     selectedTemplate,
-          structure:       selectedStructure || "landing",
-        },
-      });
-    } catch {
-      // 슬롯 저장 실패해도 완료 메시지는 표시
+    // 슬롯 저장 (P3 preview에 필요 — id/template 없으면 건너뜀, 실패해도 계속)
+    if (id && selectedTemplate) {
+      try {
+        await api.patch(`api/v1/sites/${id}/onboarding/slots`, {
+          json: {
+            business_name:   (slots.business_name as string) || "",
+            business_region: (slots.business_region as string) || "",
+            core_services:   (slots.core_services as string) || "",
+            target_audience: (slots.target_audience as string) || "",
+            phone:           (slots.phone as string) || "",
+            kakao_channel:   kakaoRaw !== "없음" ? kakaoRaw : "",
+            business_hours:  (slots.business_hours as string) || "평일 09:00-18:00",
+            template_id:     selectedTemplate,
+            structure:       selectedStructure || "landing",
+          },
+        });
+      } catch {
+        // 슬롯 저장 실패해도 완료 메시지는 표시
+      }
     }
 
-    // 완료 메시지 + phase 전환
+    // 완료 메시지 + phase 전환 (슬롯 저장 성공/실패와 무관하게 항상 실행)
     setChatMessages((prev) => [
       ...prev,
       {
