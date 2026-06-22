@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { api, getSubscriptionStatus, publishSite, getPipelineStatus, sendChatMessage } from "@/lib/api";
-import { renderTemplate } from "@/lib/templateRenderer";
+import { api, getSubscriptionStatus, publishSite, getPipelineStatus, sendChatMessage, triggerPreview } from "@/lib/api";
 import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
@@ -10,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 
-type Phase = "start" | "structure" | "template" | "conversation" | "preview";
+type Phase = "start" | "structure" | "template" | "conversation" | "chat_done" | "preview";
 
 const structureOptions: { id: string; label: string; desc: string; icon: IconName; recommended?: boolean }[] = [
   { id: "landing", label: "랜딩페이지", desc: "한 페이지로 핵심 메시지 전달", icon: "monitor", recommended: true },
@@ -96,7 +95,10 @@ function getProgress(phase: Phase) {
     { key: "conversation", label: "정보 수집" },
     { key: "preview", label: "프리뷰" },
   ];
-  const idx = { start: 0, structure: 1, template: 2, conversation: 3, preview: 4 }[phase];
+  const phaseIdx: Record<Phase, number> = {
+    start: 0, structure: 1, template: 2, conversation: 3, chat_done: 3, preview: 4,
+  };
+  const idx = phaseIdx[phase] ?? 0;
   return items.map((item, i) => ({
     ...item,
     status: i < idx ? "done" : i === idx ? "active" : "pending",
@@ -315,55 +317,56 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   };
 
   const handleConversationComplete = async (overrideSlots?: Record<string, unknown>) => {
-    if (!selectedTemplate) {
-      setError("템플릿을 먼저 선택해 주세요.");
-      return;
+    const id = siteId || propSiteId;
+    if (!id || !selectedTemplate) return;
+
+    const slots = overrideSlots || slotFilled;
+    const kakaoRaw = (slots.kakao_channel as string) || "";
+
+    // 슬롯 저장 (P3 preview에 필요)
+    try {
+      await api.patch(`api/v1/sites/${id}/onboarding/slots`, {
+        json: {
+          business_name:   (slots.business_name as string) || "",
+          business_region: (slots.business_region as string) || "",
+          core_services:   (slots.core_services as string) || "",
+          target_audience: (slots.target_audience as string) || "",
+          phone:           (slots.phone as string) || "",
+          kakao_channel:   kakaoRaw !== "없음" ? kakaoRaw : "",
+          business_hours:  (slots.business_hours as string) || "평일 09:00-18:00",
+          template_id:     selectedTemplate,
+          structure:       selectedStructure || "landing",
+        },
+      });
+    } catch {
+      // 슬롯 저장 실패해도 완료 메시지는 표시
     }
+
+    // 완료 메시지 + phase 전환
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant" as const,
+        content:
+          "홈페이지 구성에 필요한 정보를 모두 수집했습니다! 아래 버튼을 눌러 AI가 만든 홈페이지 초안을 확인해 보세요.",
+      },
+    ]);
+    setPhase("chat_done");
+  };
+
+  const handlePreviewRequest = async () => {
+    const id = siteId || propSiteId;
+    if (!id) { setError("사이트 ID가 없습니다."); return; }
     setLoading(true);
     setError("");
     try {
-      // 슬롯 데이터로 로컬 Contract JSON 생성
-      const slots = overrideSlots || slotFilled;
-      const localContract = buildLocalContract(slots, selectedTemplate);
-      const html = await renderTemplate(
-        localContract as unknown as Parameters<typeof renderTemplate>[0],
-        selectedTemplate,
-        selectedStructure,
-      );
-      setPreviewSrcdoc(html);
-      setPhase("preview");
-
-      // 2. 백그라운드에서 백엔드 저장 시도 (실패해도 미리보기 유지)
-      const id = siteId || propSiteId;
-      if (id) {
-        (async () => {
-          try {
-            const kakaoRaw = (slots.kakao_channel as string) || "";
-            await api.patch(`api/v1/sites/${id}/onboarding/slots`, {
-              json: {
-                business_name:   (slots.business_name as string) || "",
-                business_region: (slots.business_region as string) || "",
-                core_services:   (slots.core_services as string) || "",
-                target_audience: (slots.target_audience as string) || "",
-                phone:           (slots.phone as string) || "",
-                kakao_channel:   kakaoRaw !== "없음" ? kakaoRaw : "",
-                business_hours:  (slots.business_hours as string) || "평일 09:00-18:00",
-                template_id:     selectedTemplate || "",
-                structure:       selectedStructure || "landing",
-              },
-            });
-            await api.post(`api/v1/sites/${id}/onboarding/complete`);
-            await api.post(`api/v1/sites/${id}/contract`);
-            await api.post(`api/v1/sites/${id}/preview`);
-            setSiteId(id);
-          } catch {
-            // 백엔드 저장 실패는 무시 (로컬 미리보기는 이미 표시됨)
-          }
-        })();
+      const result = await triggerPreview(id);
+      if (result.preview_html) {
+        setPreviewSrcdoc(result.preview_html);
       }
-    } catch (err) {
-      console.error(err);
-      setError("프리뷰 생성에 실패했습니다");
+      setPhase("preview");
+    } catch {
+      setError("프리뷰 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -557,7 +560,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
             )}
 
             {/* 대화 — P1 LLM 챗봇 */}
-            {phase === "conversation" && (
+            {(phase === "conversation" || phase === "chat_done") && (
               <div className="flex h-full flex-col">
                 {/* 메시지 목록 */}
                 <div className="flex-1 space-y-3 overflow-y-auto pb-2">
@@ -593,31 +596,48 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                   <div ref={chatBottomRef} />
                 </div>
 
-                {/* 입력창 */}
-                <div className="mt-3 flex gap-2 border-t pt-3">
-                  <Input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleChatSend();
-                      }
-                    }}
-                    placeholder="메시지를 입력하세요..."
-                    disabled={chatSending}
-                    className="flex-1"
-                  />
-                  <Button
-                    hierarchy="primary"
-                    size="md"
-                    onClick={handleChatSend}
-                    disabled={chatSending || !chatInput.trim()}
-                    iconLeading={<Icon name="arrow-up" size={15} />}
-                  >
-                    전송
-                  </Button>
-                </div>
+                {/* 대화 완료 CTA */}
+                {phase === "chat_done" ? (
+                  <div className="mt-3 border-t pt-4">
+                    <Button
+                      hierarchy="primary"
+                      size="lg"
+                      onClick={handlePreviewRequest}
+                      disabled={loading}
+                      className="w-full"
+                      iconLeading={loading ? undefined : <Icon name="sparkles" size={16} />}
+                    >
+                      {loading ? "AI가 홈페이지를 생성하는 중..." : "홈페이지 미리보기 확인하기"}
+                    </Button>
+                    {error && <p className="mt-2 text-center text-xs text-red-500">{error}</p>}
+                  </div>
+                ) : (
+                  /* 입력창 */
+                  <div className="mt-3 flex gap-2 border-t pt-3">
+                    <Input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleChatSend();
+                        }
+                      }}
+                      placeholder="메시지를 입력하세요..."
+                      disabled={chatSending}
+                      className="flex-1"
+                    />
+                    <Button
+                      hierarchy="primary"
+                      size="md"
+                      onClick={handleChatSend}
+                      disabled={chatSending || !chatInput.trim()}
+                      iconLeading={<Icon name="arrow-up" size={15} />}
+                    >
+                      전송
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 

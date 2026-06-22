@@ -333,7 +333,8 @@ export async function sendChatMessage(siteId: string, payload: ChatRequest): Pro
 
 export interface PreviewResponse {
   site_id: string;
-  preview_mode: "triggered" | "mock";
+  preview_mode: "p3" | "mock";
+  preview_html?: string;
   preview_url?: string;
   message: string;
 }
