@@ -311,8 +311,10 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
       if (res.current_slot) setCurrentSlot(res.current_slot);
       if (res.slot_filled) setSlotFilled((prev) => ({ ...prev, ...res.slot_filled }));
 
-      if (res.next_stage === "contract_compile") {
-        // 슬롯 채우기 완료 → 로컬 데이터로 프리뷰 생성
+      if (
+        res.next_stage === "contract_compile" ||
+        res.turn_status === "ready_for_contract_compile"
+      ) {
         setTimeout(() => handleConversationComplete(res.slot_filled), 800);
       }
     } catch {
