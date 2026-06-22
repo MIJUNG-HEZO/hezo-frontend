@@ -37,32 +37,33 @@ const templateOptions: Record<string, { id: string; name: string; desc: string; 
 };
 
 /** 폼 입력값으로 로컬 Contract JSON 생성 (백엔드 없이 미리보기용) */
-function buildLocalContract(
-  businessName: string,
-  services: string,
-  phone: string,
-  templateId: string,
-) {
-  const serviceList = services
-    ? services.split(",").map((s) => s.trim()).filter(Boolean)
-    : [];
+function buildLocalContract(slots: Record<string, unknown>, templateId: string) {
+  const bName = (slots.business_name as string) || "";
+  const svcRaw = (slots.core_services as string) || "";
+  const serviceList = svcRaw ? svcRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const phone = (slots.phone as string) || "";
+  const kakao = (slots.kakao_channel as string) || "";
+  const region = (slots.business_region as string) || "";
+  const hours = (slots.business_hours as string) || "평일 09:00-18:00";
+  const cta = kakao && kakao !== "없음" ? "카카오톡 상담" : "무료 상담 신청";
 
   return {
     template: { template_id: templateId },
-    brand: { name: businessName || "My Business" },
+    brand: { name: bName || "My Business" },
     contact: {
-      phone: phone || "",
+      phone,
       email: "",
-      address: "",
-      hours: { weekday: "" },
+      address: region,
+      hours: { weekday: hours },
+      kakao: kakao !== "없음" ? kakao : "",
     },
     content: {
       landing: {
         domain_data: {
           hero: {
-            headline: businessName || "환영합니다",
-            subheadline: services || "",
-            cta_text: "지금 시작하기",
+            headline: bName || "환영합니다",
+            subheadline: svcRaw || "",
+            cta_text: cta,
           },
           services: serviceList.map((s) => ({ name: s, desc: "" })),
           values: [] as { name: string; desc: string }[],
@@ -110,11 +111,6 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   if (propSiteId && propSiteId !== siteId) {
     setSiteId(propSiteId);
   }
-
-  // 레거시 폼 상태 (buildLocalContract용 보존)
-  const [businessName, setBusinessName] = useState("");
-  const [services, setServices] = useState("");
-  const [phone, setPhone] = useState("");
 
   // P1 LLM 챗봇 대화 상태
   type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -313,13 +309,9 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setLoading(true);
     setError("");
     try {
-      // 슬롯 데이터로 로컬 Contract JSON 생성 (AgentCore 응답 또는 폼 데이터)
+      // 슬롯 데이터로 로컬 Contract JSON 생성
       const slots = overrideSlots || slotFilled;
-      const bName = (slots.business_name as string) || businessName || "My Business";
-      const svcStr = (slots.core_services as string) || services || "";
-      const phoneStr = (slots.contact_method as string) || phone || "";
-
-      const localContract = buildLocalContract(bName, svcStr, phoneStr, selectedTemplate);
+      const localContract = buildLocalContract(slots, selectedTemplate);
       const html = await renderTemplate(
         localContract as unknown as Parameters<typeof renderTemplate>[0],
         selectedTemplate,
@@ -333,12 +325,20 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
       if (id) {
         (async () => {
           try {
-            const serviceList = services ? services.split(",").map((s) => s.trim()) : ["서비스1"];
-            await api.patch(`api/v1/sites/${id}/onboarding/business`, { json: { business_name: businessName || "테스트 업체" } });
-            await api.patch(`api/v1/sites/${id}/onboarding/industry`, { json: { industry: "서비스", job_module: "general" } });
-            await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: serviceList } });
-            await api.patch(`api/v1/sites/${id}/onboarding/contact`, { json: { phone: phone || "02-1234-5678", email: "", address: "", hours: "" } });
-            await api.patch(`api/v1/sites/${id}/onboarding/legal`, { json: { business_reg_number: "123-45-67890" } });
+            const kakaoRaw = (slots.kakao_channel as string) || "";
+            await api.patch(`api/v1/sites/${id}/onboarding/slots`, {
+              json: {
+                business_name:   (slots.business_name as string) || "",
+                business_region: (slots.business_region as string) || "",
+                core_services:   (slots.core_services as string) || "",
+                target_audience: (slots.target_audience as string) || "",
+                phone:           (slots.phone as string) || "",
+                kakao_channel:   kakaoRaw !== "없음" ? kakaoRaw : "",
+                business_hours:  (slots.business_hours as string) || "평일 09:00-18:00",
+                template_id:     selectedTemplate || "",
+                structure:       selectedStructure || "landing",
+              },
+            });
             await api.post(`api/v1/sites/${id}/onboarding/complete`);
             await api.post(`api/v1/sites/${id}/contract`);
             await api.post(`api/v1/sites/${id}/preview`);
