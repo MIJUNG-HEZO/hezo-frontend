@@ -289,7 +289,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
 
       setChatMessages((prev) => [...prev, { role: "assistant", content: res.assistant_message }]);
       if (res.current_slot) setCurrentSlot(res.current_slot);
-      if (res.slot_filled) setSlotFilled(res.slot_filled);
+      if (res.slot_filled) setSlotFilled((prev) => ({ ...prev, ...res.slot_filled }));
 
       if (res.next_stage === "contract_compile") {
         // 슬롯 채우기 완료 → 로컬 데이터로 프리뷰 생성
