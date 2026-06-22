@@ -13,38 +13,42 @@ type Phase = "start" | "structure" | "template" | "conversation" | "chat_done" |
 
 const structureOptions: { id: string; label: string; desc: string; icon: IconName; recommended?: boolean }[] = [
   { id: "landing", label: "랜딩페이지", desc: "한 페이지로 핵심 메시지 전달", icon: "monitor", recommended: true },
-  { id: "multi", label: "블로그", desc: "콘텐츠·기록 중심 블로그형", icon: "file-text" },
+  { id: "blog", label: "블로그", desc: "콘텐츠·기록 중심 블로그형", icon: "file-text" },
   { id: "store", label: "스토어", desc: "상품/메뉴 카탈로그 중심", icon: "shopping-cart" },
 ];
 
 const TEMPLATE_DOMAIN: Record<string, { domain: string; domain_label: string }> = {
-  "01-clinic-landing":   { domain: "medical-clinic",  domain_label: "병원/임플란트" },
-  "02-course-landing":   { domain: "education",        domain_label: "교육/강의" },
-  "17-solar-energy":     { domain: "construction",     domain_label: "시공/설치 서비스" },
-  "05-lifting-clinic":   { domain: "medical-clinic",  domain_label: "병원/클리닉" },
-  "01-food-travel-blog": { domain: "food-travel",      domain_label: "음식/여행 블로그" },
-  "03-developer-docs":   { domain: "developer",        domain_label: "개발자 블로그" },
-  "17-career-notebook":  { domain: "career",           domain_label: "커리어/취업" },
-  "01-cafe-menu":        { domain: "cafe-dessert",     domain_label: "카페/디저트" },
-  "06-oops-nail":        { domain: "beauty-salon",     domain_label: "네일/뷰티샵" },
-  "10-wine-market":      { domain: "wine-market",      domain_label: "와인/주류 셀렉샵" },
+  // landing
+  "13-tax-accounting":   { domain: "tax-accounting",   domain_label: "세무/회계" },
+  "01-clinic-landing":   { domain: "medical-clinic",   domain_label: "병원/임플란트" },
+  "02-course-landing":   { domain: "education",         domain_label: "교육/강의" },
+  "17-solar-energy":     { domain: "construction",      domain_label: "시공/설치 서비스" },
+  "05-lifting-clinic":   { domain: "medical-clinic",   domain_label: "병원/클리닉" },
+  // blog
+  "17-career-notebook":  { domain: "career",            domain_label: "커리어/취업" },
+  "01-food-travel-blog": { domain: "food-travel",       domain_label: "음식/여행 블로그" },
+  "03-developer-docs":   { domain: "developer",         domain_label: "개발자 블로그" },
+  // store
+  "10-wine-market":      { domain: "wine-market",       domain_label: "와인/주류 셀렉샵" },
+  "01-cafe-menu":        { domain: "cafe-dessert",      domain_label: "카페/디저트" },
+  "06-oops-nail":        { domain: "beauty-salon",      domain_label: "네일/뷰티샵" },
 };
 
 const templateOptions: Record<string, { id: string; name: string; desc: string; previewUrl: string; badge?: string }[]> = {
   landing: [
-    { id: "01-clinic-landing", name: "병원/임플란트 상담", desc: "상담 전환형 랜딩페이지", previewUrl: "/templates/landing/01-clinic-landing.html", badge: "추천" },
+    { id: "13-tax-accounting", name: "세무/회계 사무소", desc: "신뢰형 전문직 랜딩페이지", previewUrl: "/templates/landing/13-tax-accounting.html", badge: "추천" },
+    { id: "01-clinic-landing", name: "병원/임플란트 상담", desc: "상담 전환형 랜딩페이지", previewUrl: "/templates/landing/01-clinic-landing.html" },
     { id: "02-course-landing", name: "강의/부트캠프", desc: "수강 신청형 랜딩페이지", previewUrl: "/templates/landing/02-course-landing.html" },
-    { id: "17-solar-energy", name: "시공/설치 서비스", desc: "견적 문의형 랜딩페이지", previewUrl: "/templates/landing/17-solar-energy.html" },
   ],
-  multi: [
-    { id: "01-food-travel-blog", name: "음식/여행 블로그", desc: "감성 콘텐츠 블로그", previewUrl: "/templates/blog/01-food-travel-blog.html", badge: "추천" },
+  blog: [
+    { id: "17-career-notebook", name: "커리어 성장 노트", desc: "이직·취업 기록 블로그", previewUrl: "/templates/blog/17-career-notebook.html", badge: "추천" },
+    { id: "01-food-travel-blog", name: "음식/여행 블로그", desc: "감성 콘텐츠 블로그", previewUrl: "/templates/blog/01-food-travel-blog.html" },
     { id: "03-developer-docs", name: "개발자 블로그", desc: "기술 문서/포트폴리오", previewUrl: "/templates/blog/03-developer-docs.html" },
-    { id: "17-career-notebook", name: "커리어 성장 노트", desc: "이직·취업 기록 블로그", previewUrl: "/templates/blog/17-career-notebook.html" },
   ],
   store: [
-    { id: "01-cafe-menu", name: "카페/디저트 메뉴", desc: "메뉴 주문형 스토어", previewUrl: "/templates/store/01-cafe-menu.html", badge: "추천" },
+    { id: "10-wine-market", name: "와인/주류 셀렉샵", desc: "큐레이션 상품 스토어", previewUrl: "/templates/store/10-wine-market.html", badge: "추천" },
+    { id: "01-cafe-menu", name: "카페/디저트 메뉴", desc: "메뉴 주문형 스토어", previewUrl: "/templates/store/01-cafe-menu.html" },
     { id: "06-oops-nail", name: "네일/뷰티샵", desc: "스타일 예약형 스토어", previewUrl: "/templates/store/06-oops-nail.html" },
-    { id: "10-wine-market", name: "와인/주류 셀렉샵", desc: "큐레이션 상품 스토어", previewUrl: "/templates/store/10-wine-market.html" },
   ],
 };
 
