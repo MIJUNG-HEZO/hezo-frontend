@@ -325,7 +325,7 @@ export interface ChatResponse {
 }
 
 export async function sendChatMessage(siteId: string, payload: ChatRequest): Promise<ChatResponse> {
-  return api.post(`api/v1/sites/${siteId}/chat`, { json: payload }).json<ChatResponse>();
+  return api.post(`api/v1/sites/${siteId}/chat`, { json: payload, timeout: 90000 }).json<ChatResponse>();
 }
 
 // --- Preview API ---
