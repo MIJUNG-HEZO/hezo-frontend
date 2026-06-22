@@ -18,6 +18,19 @@ const structureOptions: { id: string; label: string; desc: string; icon: IconNam
   { id: "store", label: "스토어", desc: "상품/메뉴 카탈로그 중심", icon: "shopping-cart" },
 ];
 
+const TEMPLATE_DOMAIN: Record<string, { domain: string; domain_label: string }> = {
+  "01-clinic-landing":   { domain: "medical-clinic",  domain_label: "병원/임플란트" },
+  "02-course-landing":   { domain: "education",        domain_label: "교육/강의" },
+  "17-solar-energy":     { domain: "construction",     domain_label: "시공/설치 서비스" },
+  "05-lifting-clinic":   { domain: "medical-clinic",  domain_label: "병원/클리닉" },
+  "01-food-travel-blog": { domain: "food-travel",      domain_label: "음식/여행 블로그" },
+  "03-developer-docs":   { domain: "developer",        domain_label: "개발자 블로그" },
+  "17-career-notebook":  { domain: "career",           domain_label: "커리어/취업" },
+  "01-cafe-menu":        { domain: "cafe-dessert",     domain_label: "카페/디저트" },
+  "06-oops-nail":        { domain: "beauty-salon",     domain_label: "네일/뷰티샵" },
+  "10-wine-market":      { domain: "wine-market",      domain_label: "와인/주류 셀렉샵" },
+};
+
 const templateOptions: Record<string, { id: string; name: string; desc: string; previewUrl: string; badge?: string }[]> = {
   landing: [
     { id: "01-clinic-landing", name: "병원/임플란트 상담", desc: "상담 전환형 랜딩페이지", previewUrl: "/templates/landing/01-clinic-landing.html", badge: "추천" },
@@ -271,14 +284,14 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setChatSending(true);
 
     try {
-      const templateParts = (selectedTemplate || "").split("/");
+      const tplDomain = TEMPLATE_DOMAIN[selectedTemplate || ""] ?? { domain: "general", domain_label: "비즈니스" };
       const res = await sendChatMessage(siteId || propSiteId || "temp", {
         session_id: chatSessionId,
         user_message: msg,
         answered_slot: currentSlot,
         known_answers: slotFilled,
-        domain: templateParts[0] || "general",
-        domain_label: templateParts[0] === "landing" ? "랜딩페이지" : templateParts[0] || "",
+        domain: tplDomain.domain,
+        domain_label: tplDomain.domain_label,
         category: selectedStructure || "landing",
         template_id: selectedTemplate || "",
       });
