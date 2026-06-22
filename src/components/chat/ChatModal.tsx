@@ -280,6 +280,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
         session_id: chatSessionId,
         user_message: msg,
         answered_slot: currentSlot,
+        known_answers: slotFilled,
         domain: templateParts[0] || "general",
         domain_label: templateParts[0] === "landing" ? "랜딩페이지" : templateParts[0] || "",
         category: selectedStructure || "landing",

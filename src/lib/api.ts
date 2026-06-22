@@ -307,6 +307,7 @@ export interface ChatRequest {
   session_id: string;
   user_message: string;
   answered_slot?: string;
+  known_answers?: Record<string, unknown>;
   domain?: string;
   domain_label?: string;
   category?: string;
