@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { api, getSubscriptionStatus, publishSite, getPipelineStatus, sendChatMessage, triggerPreview } from "@/lib/api";
+import { api, getSubscriptionStatus, publishSite, getPipelineStatus, sendChatMessage, triggerPreview, createSite } from "@/lib/api";
 import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
@@ -265,9 +265,14 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     if (!selectedTemplate || !selectedStructure) return;
     setLoading(true);
     setError("");
-    // 백엔드 저장 시도 (실패해도 다음 단계로 진행)
     try {
-      const id = siteId || propSiteId;
+      let id = siteId || propSiteId;
+      // siteId 없으면 자동 생성
+      if (!id) {
+        const newSite = await createSite(selectedTemplate, selectedStructure);
+        id = newSite.id;
+        setSiteId(id);
+      }
       if (id) {
         await api.patch(`api/v1/sites/${id}/onboarding/structure`, {
           json: { structure: selectedStructure, template_id: selectedTemplate },
