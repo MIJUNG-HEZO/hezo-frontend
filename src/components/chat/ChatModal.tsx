@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { api, getSubscriptionStatus, publishSite, getPipelineStatus } from "@/lib/api";
-import { renderTemplate } from "@/lib/templateRenderer";
+import { useState, useEffect, useRef } from "react";
+import { api, getSubscriptionStatus, publishSite, getPipelineStatus, sendChatMessage, triggerPreview, createSite } from "@/lib/api";
 import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
@@ -10,59 +9,77 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 
-type Phase = "start" | "structure" | "template" | "conversation" | "preview";
+type Phase = "start" | "structure" | "template" | "conversation" | "chat_done" | "preview";
 
 const structureOptions: { id: string; label: string; desc: string; icon: IconName; recommended?: boolean }[] = [
   { id: "landing", label: "랜딩페이지", desc: "한 페이지로 핵심 메시지 전달", icon: "monitor", recommended: true },
-  { id: "multi", label: "블로그", desc: "콘텐츠·기록 중심 블로그형", icon: "file-text" },
+  { id: "blog", label: "블로그", desc: "콘텐츠·기록 중심 블로그형", icon: "file-text" },
   { id: "store", label: "스토어", desc: "상품/메뉴 카탈로그 중심", icon: "shopping-cart" },
 ];
 
+const TEMPLATE_DOMAIN: Record<string, { domain: string; domain_label: string }> = {
+  // landing
+  "13-tax-accounting":   { domain: "tax-accounting",   domain_label: "세무/회계" },
+  "01-clinic-landing":   { domain: "medical-clinic",   domain_label: "병원/임플란트" },
+  "02-course-landing":   { domain: "education",         domain_label: "교육/강의" },
+  "17-solar-energy":     { domain: "construction",      domain_label: "시공/설치 서비스" },
+  "05-lifting-clinic":   { domain: "medical-clinic",   domain_label: "병원/클리닉" },
+  // blog
+  "17-career-notebook":  { domain: "career",            domain_label: "커리어/취업" },
+  "01-food-travel-blog": { domain: "food-travel",       domain_label: "음식/여행 블로그" },
+  "03-developer-docs":   { domain: "developer",         domain_label: "개발자 블로그" },
+  // store
+  "10-wine-market":      { domain: "wine-market",       domain_label: "와인/주류 셀렉샵" },
+  "01-cafe-menu":        { domain: "cafe-dessert",      domain_label: "카페/디저트" },
+  "06-oops-nail":        { domain: "beauty-salon",      domain_label: "네일/뷰티샵" },
+};
+
 const templateOptions: Record<string, { id: string; name: string; desc: string; previewUrl: string; badge?: string }[]> = {
   landing: [
-    { id: "01-clinic-landing", name: "병원/임플란트 상담", desc: "상담 전환형 랜딩페이지", previewUrl: "/templates/landing/01-clinic-landing.html", badge: "추천" },
+    { id: "13-tax-accounting", name: "세무/회계 사무소", desc: "신뢰형 전문직 랜딩페이지", previewUrl: "/templates/landing/13-tax-accounting.html", badge: "추천" },
+    { id: "01-clinic-landing", name: "병원/임플란트 상담", desc: "상담 전환형 랜딩페이지", previewUrl: "/templates/landing/01-clinic-landing.html" },
     { id: "02-course-landing", name: "강의/부트캠프", desc: "수강 신청형 랜딩페이지", previewUrl: "/templates/landing/02-course-landing.html" },
-    { id: "17-solar-energy", name: "시공/설치 서비스", desc: "견적 문의형 랜딩페이지", previewUrl: "/templates/landing/17-solar-energy.html" },
   ],
-  multi: [
-    { id: "01-food-travel-blog", name: "음식/여행 블로그", desc: "감성 콘텐츠 블로그", previewUrl: "/templates/blog/01-food-travel-blog.html", badge: "추천" },
+  blog: [
+    { id: "17-career-notebook", name: "커리어 성장 노트", desc: "이직·취업 기록 블로그", previewUrl: "/templates/blog/17-career-notebook.html", badge: "추천" },
+    { id: "01-food-travel-blog", name: "음식/여행 블로그", desc: "감성 콘텐츠 블로그", previewUrl: "/templates/blog/01-food-travel-blog.html" },
     { id: "03-developer-docs", name: "개발자 블로그", desc: "기술 문서/포트폴리오", previewUrl: "/templates/blog/03-developer-docs.html" },
-    { id: "17-career-notebook", name: "커리어 성장 노트", desc: "이직·취업 기록 블로그", previewUrl: "/templates/blog/17-career-notebook.html" },
   ],
   store: [
-    { id: "01-cafe-menu", name: "카페/디저트 메뉴", desc: "메뉴 주문형 스토어", previewUrl: "/templates/store/01-cafe-menu.html", badge: "추천" },
+    { id: "10-wine-market", name: "와인/주류 셀렉샵", desc: "큐레이션 상품 스토어", previewUrl: "/templates/store/10-wine-market.html", badge: "추천" },
+    { id: "01-cafe-menu", name: "카페/디저트 메뉴", desc: "메뉴 주문형 스토어", previewUrl: "/templates/store/01-cafe-menu.html" },
     { id: "06-oops-nail", name: "네일/뷰티샵", desc: "스타일 예약형 스토어", previewUrl: "/templates/store/06-oops-nail.html" },
-    { id: "10-wine-market", name: "와인/주류 셀렉샵", desc: "큐레이션 상품 스토어", previewUrl: "/templates/store/10-wine-market.html" },
   ],
 };
 
 /** 폼 입력값으로 로컬 Contract JSON 생성 (백엔드 없이 미리보기용) */
-function buildLocalContract(
-  businessName: string,
-  services: string,
-  phone: string,
-  templateId: string,
-) {
-  const serviceList = services
-    ? services.split(",").map((s) => s.trim()).filter(Boolean)
-    : [];
+function buildLocalContract(slots: Record<string, unknown>, templateId: string) {
+  const bName = (slots.business_name as string) || "";
+  const svcRaw = (slots.core_services as string) || "";
+  const serviceList = svcRaw ? svcRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const phone = (slots.phone as string) || "";
+  const kakao = (slots.kakao_channel as string) || "";
+  const region = (slots.business_region as string) || "";
+  const hours = (slots.business_hours as string) || "평일 09:00-18:00";
+  const cta = kakao && kakao !== "없음" ? "카카오톡 상담" : "무료 상담 신청";
 
   return {
     template: { template_id: templateId },
-    brand: { name: businessName || "My Business" },
+    brand: { name: bName || "My Business" },
     contact: {
-      phone: phone || "",
+      phone,
       email: "",
-      address: "",
-      hours: { weekday: "" },
+      address: region,
+      hours: { weekday: hours },
+      kakao: kakao !== "없음" ? kakao : "",
     },
     content: {
       landing: {
         domain_data: {
           hero: {
-            headline: businessName || "환영합니다",
-            subheadline: services || "",
-            cta_text: "지금 시작하기",
+            headline: bName || "환영합니다",
+            subheadline: svcRaw || "",
+            cta_text: cta,
           },
           services: serviceList.map((s) => ({ name: s, desc: "" })),
           values: [] as { name: string; desc: string }[],
@@ -82,7 +99,10 @@ function getProgress(phase: Phase) {
     { key: "conversation", label: "정보 수집" },
     { key: "preview", label: "프리뷰" },
   ];
-  const idx = { start: 0, structure: 1, template: 2, conversation: 3, preview: 4 }[phase];
+  const phaseIdx: Record<Phase, number> = {
+    start: 0, structure: 1, template: 2, conversation: 3, chat_done: 3, preview: 4,
+  };
+  const idx = phaseIdx[phase] ?? 0;
   return items.map((item, i) => ({
     ...item,
     status: i < idx ? "done" : i === idx ? "active" : "pending",
@@ -111,9 +131,15 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setSiteId(propSiteId);
   }
 
-  const [businessName, setBusinessName] = useState("");
-  const [services, setServices] = useState("");
-  const [phone, setPhone] = useState("");
+  // P1 LLM 챗봇 대화 상태
+  type ChatMessage = { role: "user" | "assistant"; content: string };
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [currentSlot, setCurrentSlot] = useState("business_name");
+  const [chatSessionId] = useState(() => `chat-${Date.now()}`);
+  const [slotFilled, setSlotFilled] = useState<Record<string, unknown>>({});
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const [previewSrcdoc, setPreviewSrcdoc] = useState<string | null>(null);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
@@ -130,6 +156,21 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
       .then((status) => setCurrentPlan(status.plan))
       .catch(() => {});
   }, []);
+
+  // conversation 단계 진입 시 초기 인사 메시지
+  useEffect(() => {
+    if (phase === "conversation" && chatMessages.length === 0) {
+      setChatMessages([{
+        role: "assistant",
+        content: "안녕하세요! 홈페이지 제작을 시작할게요. 먼저 업체명(상호명)을 알려주세요.",
+      }]);
+    }
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 새 메시지 도착 시 스크롤
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   // 파이프라인 폴링 (AWS 모드에서만)
   useEffect(() => {
@@ -224,9 +265,14 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     if (!selectedTemplate || !selectedStructure) return;
     setLoading(true);
     setError("");
-    // 백엔드 저장 시도 (실패해도 다음 단계로 진행)
     try {
-      const id = siteId || propSiteId;
+      let id = siteId || propSiteId;
+      // siteId 없으면 자동 생성
+      if (!id) {
+        const newSite = await createSite(selectedTemplate, selectedStructure);
+        id = newSite.id;
+        setSiteId(id);
+      }
       if (id) {
         await api.patch(`api/v1/sites/${id}/onboarding/structure`, {
           json: { structure: selectedStructure, template_id: selectedTemplate },
@@ -240,47 +286,98 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setPhase("conversation");
   };
 
-  const handleConversationComplete = async () => {
-    if (!selectedTemplate) {
-      setError("템플릿을 먼저 선택해 주세요.");
-      return;
+  const handleChatSend = async () => {
+    const msg = chatInput.trim();
+    if (!msg || chatSending) return;
+
+    setChatMessages((prev) => [...prev, { role: "user", content: msg }]);
+    setChatInput("");
+    setChatSending(true);
+
+    try {
+      const tplDomain = TEMPLATE_DOMAIN[selectedTemplate || ""] ?? { domain: "general", domain_label: "비즈니스" };
+      const res = await sendChatMessage(siteId || propSiteId || "temp", {
+        session_id: chatSessionId,
+        user_message: msg,
+        answered_slot: currentSlot,
+        known_answers: slotFilled,
+        domain: tplDomain.domain,
+        domain_label: tplDomain.domain_label,
+        category: selectedStructure || "landing",
+        template_id: selectedTemplate || "",
+      });
+
+      setChatMessages((prev) => [...prev, { role: "assistant", content: res.assistant_message }]);
+      if (res.current_slot) setCurrentSlot(res.current_slot);
+      if (res.slot_filled) setSlotFilled((prev) => ({ ...prev, ...res.slot_filled }));
+
+      if (
+        res.next_stage === "contract_compile" ||
+        res.turn_status === "ready_for_contract_compile"
+      ) {
+        setTimeout(() => handleConversationComplete(res.slot_filled), 800);
+      }
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "일시적인 오류가 발생했습니다. 다시 입력해 주세요." },
+      ]);
+    } finally {
+      setChatSending(false);
     }
+  };
+
+  const handleConversationComplete = async (overrideSlots?: Record<string, unknown>) => {
+    const id = siteId || propSiteId;
+    const slots = overrideSlots || slotFilled;
+    const kakaoRaw = (slots.kakao_channel as string) || "";
+
+    // 슬롯 저장 (P3 preview에 필요 — id/template 없으면 건너뜀, 실패해도 계속)
+    if (id && selectedTemplate) {
+      try {
+        await api.patch(`api/v1/sites/${id}/onboarding/slots`, {
+          json: {
+            business_name:   (slots.business_name as string) || "",
+            business_region: (slots.business_region as string) || "",
+            core_services:   (slots.core_services as string) || "",
+            target_audience: (slots.target_audience as string) || "",
+            phone:           (slots.phone as string) || "",
+            kakao_channel:   kakaoRaw !== "없음" ? kakaoRaw : "",
+            business_hours:  (slots.business_hours as string) || "평일 09:00-18:00",
+            template_id:     selectedTemplate,
+            structure:       selectedStructure || "landing",
+          },
+        });
+      } catch {
+        // 슬롯 저장 실패해도 완료 메시지는 표시
+      }
+    }
+
+    // 완료 메시지 + phase 전환 (슬롯 저장 성공/실패와 무관하게 항상 실행)
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant" as const,
+        content:
+          "홈페이지 구성에 필요한 정보를 모두 수집했습니다! 아래 버튼을 눌러 AI가 만든 홈페이지 초안을 확인해 보세요.",
+      },
+    ]);
+    setPhase("chat_done");
+  };
+
+  const handlePreviewRequest = async () => {
+    const id = siteId || propSiteId;
+    if (!id) { setError("사이트 ID가 없습니다."); return; }
     setLoading(true);
     setError("");
     try {
-      // 1. 로컬 Contract JSON으로 즉시 미리보기 생성 (백엔드 불필요)
-      const localContract = buildLocalContract(businessName, services, phone, selectedTemplate);
-      const html = await renderTemplate(
-        localContract as unknown as Parameters<typeof renderTemplate>[0],
-        selectedTemplate,
-        selectedStructure,
-      );
-      setPreviewSrcdoc(html);
-      setPhase("preview");
-
-      // 2. 백그라운드에서 백엔드 저장 시도 (실패해도 미리보기 유지)
-      const id = siteId || propSiteId;
-      if (id) {
-        (async () => {
-          try {
-            const serviceList = services ? services.split(",").map((s) => s.trim()) : ["서비스1"];
-            await api.patch(`api/v1/sites/${id}/onboarding/business`, { json: { business_name: businessName || "테스트 업체" } });
-            await api.patch(`api/v1/sites/${id}/onboarding/industry`, { json: { industry: "서비스", job_module: "general" } });
-            await api.patch(`api/v1/sites/${id}/onboarding/services`, { json: { services: serviceList } });
-            await api.patch(`api/v1/sites/${id}/onboarding/contact`, { json: { phone: phone || "02-1234-5678", email: "", address: "", hours: "" } });
-            await api.patch(`api/v1/sites/${id}/onboarding/legal`, { json: { business_reg_number: "123-45-67890" } });
-            await api.post(`api/v1/sites/${id}/onboarding/complete`);
-            await api.post(`api/v1/sites/${id}/contract`);
-            await api.post(`api/v1/sites/${id}/preview`);
-            setSiteId(id);
-          } catch {
-            // 백엔드 저장 실패는 무시 (로컬 미리보기는 이미 표시됨)
-          }
-        })();
+      const result = await triggerPreview(id);
+      if (result.preview_html) {
+        setPreviewSrcdoc(result.preview_html);
       }
-    } catch (err) {
-      console.error(err);
-      setError("프리뷰 생성에 실패했습니다");
+      setPhase("preview");
+    } catch {
+      setError("프리뷰 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -473,31 +570,85 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
               </div>
             )}
 
-            {/* 대화 */}
-            {phase === "conversation" && (
-              <div className="flex max-w-md flex-col gap-4">
-                <p className="text-sm text-gray-600">아래 정보를 입력하면 바로 프리뷰가 생성됩니다.</p>
-                <div>
-                  <label className="mb-1 block text-xs text-gray-500">업체명</label>
-                  <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="예: 바른한의원" />
+            {/* 대화 — P1 LLM 챗봇 */}
+            {(phase === "conversation" || phase === "chat_done") && (
+              <div className="flex h-full flex-col">
+                {/* 메시지 목록 */}
+                <div className="flex-1 space-y-3 overflow-y-auto pb-2">
+                  {chatMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex",
+                        msg.role === "user" ? "justify-end" : "justify-start",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+                          msg.role === "user"
+                            ? "bg-primary-500 text-white"
+                            : "bg-gray-100 text-gray-800",
+                        )}
+                      >
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                  {chatSending && (
+                    <div className="flex justify-start">
+                      <div className="flex gap-1 rounded-2xl bg-gray-100 px-4 py-3">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs text-gray-500">핵심 서비스 (쉼표 구분)</label>
-                  <Input value={services} onChange={(e) => setServices(e.target.value)} placeholder="예: 침 치료, 추나요법, 한약 처방" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs text-gray-500">전화번호</label>
-                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="예: 02-123-4567" />
-                </div>
-                <Button
-                  hierarchy="primary"
-                  size="lg"
-                  onClick={handleConversationComplete}
-                  disabled={loading}
-                  className="w-full"
-                >
-                  {loading ? "프리뷰 생성 중..." : "프리뷰 생성하기 →"}
-                </Button>
+
+                {/* 대화 완료 CTA */}
+                {phase === "chat_done" ? (
+                  <div className="mt-3 border-t pt-4">
+                    <Button
+                      hierarchy="primary"
+                      size="lg"
+                      onClick={handlePreviewRequest}
+                      disabled={loading}
+                      className="w-full"
+                      iconLeading={loading ? undefined : <Icon name="sparkles" size={16} />}
+                    >
+                      {loading ? "AI가 홈페이지를 생성하는 중..." : "홈페이지 미리보기 확인하기"}
+                    </Button>
+                    {error && <p className="mt-2 text-center text-xs text-red-500">{error}</p>}
+                  </div>
+                ) : (
+                  /* 입력창 */
+                  <div className="mt-3 flex gap-2 border-t pt-3">
+                    <Input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleChatSend();
+                        }
+                      }}
+                      placeholder="메시지를 입력하세요..."
+                      disabled={chatSending}
+                      className="flex-1"
+                    />
+                    <Button
+                      hierarchy="primary"
+                      size="md"
+                      onClick={handleChatSend}
+                      disabled={chatSending || !chatInput.trim()}
+                      iconLeading={<Icon name="arrow-up" size={15} />}
+                    >
+                      전송
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 

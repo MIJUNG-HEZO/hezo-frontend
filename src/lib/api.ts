@@ -306,7 +306,11 @@ export async function getContractJson(siteId: string): Promise<ContractJson> {
 export interface ChatRequest {
   session_id: string;
   user_message: string;
+  answered_slot?: string;
+  known_answers?: Record<string, unknown>;
   domain?: string;
+  domain_label?: string;
+  category?: string;
   template_id?: string;
 }
 
@@ -317,18 +321,20 @@ export interface ChatResponse {
   next_stage: "proactive_questioning" | "contract_compile" | "retry_answer";
   slot_filled?: Record<string, unknown>;
   missing_slots?: string[];
+  current_slot?: string;
   mock?: boolean;
 }
 
 export async function sendChatMessage(siteId: string, payload: ChatRequest): Promise<ChatResponse> {
-  return api.post(`api/v1/sites/${siteId}/chat`, { json: payload }).json<ChatResponse>();
+  return api.post(`api/v1/sites/${siteId}/chat`, { json: payload, timeout: 150000 }).json<ChatResponse>();
 }
 
 // --- Preview API ---
 
 export interface PreviewResponse {
   site_id: string;
-  preview_mode: "triggered" | "mock";
+  preview_mode: "p3" | "mock";
+  preview_html?: string;
   preview_url?: string;
   message: string;
 }
