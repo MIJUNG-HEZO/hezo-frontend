@@ -246,13 +246,17 @@ export interface PublishResponse {
 export interface PipelineStatusResponse {
   site_id: string;
   pipeline_status:
-    | "running"
+    | "building"
+    | "validating"
+    | "provisioning"
+    | "published"
+    | "running"             // Step Functions fallback 호환
     | "generation_complete"
     | "generation_failed"
     | "failed"
     | "rolled_back"
-    | "published"
     | "unknown";
+  domain_url?: string;
   render_spec_s3_key?: string;
   execution_arn?: string;
   updated_at?: string;

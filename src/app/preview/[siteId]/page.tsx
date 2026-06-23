@@ -26,20 +26,28 @@ export default function PreviewPage() {
   const [pipelineStarted, setPipelineStarted] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [showPricing, setShowPricing] = useState(false);
+  const [domainUrl, setDomainUrl] = useState<string | null>(null);
 
   // Step Functions 실행 중일 때만 폴링 (3초 간격)
   const { status: pipelineStatus } = usePipelinePoller(siteId, pipelineStarted);
 
-  // 파이프라인 완료 시 대시보드 이동
+  // 파이프라인 상태 변화 처리
   useEffect(() => {
     if (!pipelineStatus) return;
-    if (pipelineStatus.pipeline_status === "published") {
-      setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+    const ps = pipelineStatus.pipeline_status;
+
+    if (ps === "published") {
+      if (pipelineStatus.domain_url) {
+        setDomainUrl(pipelineStatus.domain_url);
+      } else {
+        // 도메인 URL 없으면 대시보드로 이동
+        setTimeout(() => { window.location.href = "/dashboard"; }, 2000);
+      }
     }
     if (
-      pipelineStatus.pipeline_status === "generation_failed" ||
-      pipelineStatus.pipeline_status === "failed" ||
-      pipelineStatus.pipeline_status === "rolled_back"
+      ps === "generation_failed" ||
+      ps === "failed" ||
+      ps === "rolled_back"
     ) {
       setPublishing(false);
       setPipelineStarted(false);
@@ -101,13 +109,16 @@ export default function PreviewPage() {
 
   const publishDone = pipelineStatus?.pipeline_status === "published";
 
-  const publishingLabel = () => {
-    if (!pipelineStarted) return "발급 중...";
-    const s = pipelineStatus?.pipeline_status;
-    if (s === "running") return "AI 홈페이지 생성 중...";
-    if (s === "published") return "발급 완료!";
-    return "파이프라인 실행 중...";
+  const STAGE_LABELS: Record<string, { label: string; sub: string }> = {
+    building:     { label: "홈페이지 콘텐츠 생성 중...",  sub: "AI가 맞춤 콘텐츠를 작성하고 있습니다" },
+    validating:   { label: "품질 검증 중...",             sub: "GEO 구조 및 AI 친화성 검사 중" },
+    provisioning: { label: "도메인 서버 구성 중...",      sub: "클라우드 인프라를 설정하고 있습니다 (약 5분)" },
+    published:    { label: "발급 완료!",                  sub: "" },
+    running:      { label: "파이프라인 실행 중...",        sub: "" },
   };
+
+  const getStageInfo = (ps: string | undefined) =>
+    STAGE_LABELS[ps ?? ""] ?? { label: "발급 처리 중...", sub: "" };
 
   /* ── 로딩 ── */
   if (loading) {
@@ -175,7 +186,27 @@ export default function PreviewPage() {
               <Icon name="external-link" size={12} /> 새 탭
             </button>
             {publishDone ? (
-              <span className="text-xs text-success-400">대시보드로 이동 중...</span>
+              domainUrl ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-success-400">발급 완료 ✓</span>
+                  <a
+                    href={domainUrl.startsWith("http") ? domainUrl : `https://${domainUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg bg-success-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-success-500 sm:px-5 sm:py-2 sm:text-sm"
+                  >
+                    <Icon name="external-link" size={13} /> 내 홈페이지 열기
+                  </a>
+                  <button
+                    onClick={() => { window.location.href = "/dashboard"; }}
+                    className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200"
+                  >
+                    대시보드
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs text-success-400">대시보드로 이동 중...</span>
+              )
             ) : (
               <button
                 onClick={handlePublish}
@@ -188,8 +219,16 @@ export default function PreviewPage() {
                 )}
               >
                 {publishing ? (
-                  <span className="flex items-center gap-1.5">
-                    <Icon name="refresh-cw" size={13} className="animate-spin" /> {publishingLabel()}
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span className="flex items-center gap-1.5">
+                      <Icon name="refresh-cw" size={13} className="animate-spin" />
+                      {getStageInfo(pipelineStatus?.pipeline_status).label}
+                    </span>
+                    {getStageInfo(pipelineStatus?.pipeline_status).sub && (
+                      <span className="text-[10px] font-normal opacity-70 pl-[18px]">
+                        {getStageInfo(pipelineStatus?.pipeline_status).sub}
+                      </span>
+                    )}
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5">
