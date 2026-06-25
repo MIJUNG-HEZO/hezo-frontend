@@ -66,6 +66,7 @@ export function DashSidebar({ onHide }: { onHide?: () => void }) {
   const [siteMenuOpen, setSiteMenuOpen] = useState(false);
   const [plan, setPlan] = useState<Plan>("free");
   const [userName, setUserName] = useState("사용자");
+  const [userRole, setUserRole] = useState<string>("user");
   const [isBillingOpen, setIsBillingOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [upgradePlan, setUpgradePlan] = useState<string | null>(null);
@@ -88,7 +89,10 @@ export function DashSidebar({ onHide }: { onHide?: () => void }) {
       .then((status) => setPlan(status.plan))
       .catch(() => {});
     getCurrentUser()
-      .then((u) => setUserName(u.name))
+      .then((u) => {
+        setUserName(u.name);
+        setUserRole(u.role);
+      })
       .catch(() => {});
   }, [pathname]);
 
@@ -205,6 +209,14 @@ export function DashSidebar({ onHide }: { onHide?: () => void }) {
 
         {/* secondary nav */}
         <div className="flex flex-col gap-0.5">
+          {userRole === "admin" && (
+            <SidebarLink
+              href="/admin"
+              label="어드민"
+              icon="shield-check"
+              active={isActive("/admin")}
+            />
+          )}
           <SidebarLink
             href="/dashboard?chat=open"
             label="새 사이트 만들기"
