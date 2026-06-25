@@ -15,6 +15,7 @@ export interface UserResponse {
   phone: string | null;
   email_verified_at: string | null;
   email_verified: boolean;
+  role: string;
   created_at: string;
   updated_at: string;
 }
@@ -183,4 +184,46 @@ export interface ProvisioningStatus {
     domain: string;
   } | null;
   error: { message: string; retryCount: number } | null;
+}
+
+export interface GeoFiles {
+  llms_txt: boolean;
+  llms_full_txt: boolean;
+  sitemap_xml: boolean;
+  robots_txt: boolean;
+}
+
+export interface JsonLd {
+  local_business: boolean;
+  faq_page: boolean;
+  service: boolean;
+}
+
+export interface MonitoringSnapshot {
+  geo_files: GeoFiles;
+  json_ld: JsonLd;
+  ssl_expiry_days: number | null;
+  response_ms: number | null;
+  pagespeed_mobile: number | null;
+  pagespeed_desktop: number | null;
+  last_measured_at: string;
+  from_cache: boolean;
+}
+
+export interface ResponseMsPoint {
+  date: string;
+  value: number | null;
+}
+
+export interface BotCrawls {
+  gpt_bot: number;
+  claude_bot: number;
+  perplexity_bot: number;
+  yeti: number;
+}
+
+export interface MonitoringHistory {
+  response_ms_history: ResponseMsPoint[];
+  bot_crawls: BotCrawls;
+  bot_crawls_available: boolean;
 }

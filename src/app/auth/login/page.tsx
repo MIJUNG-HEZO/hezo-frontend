@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { api } from "@/lib/api";
+import { api, getCurrentUser } from "@/lib/api";
 import { startOAuthLogin } from "@/lib/oauth";
 import { Logo } from "@/components/landing/Logo";
 import { Input } from "@/components/ui/Input";
@@ -57,9 +57,16 @@ export default function LoginPage() {
           .json();
 
         localStorage.setItem("access_token", res.access_token);
-      }
 
-      router.push("/dashboard");
+        // role 확인 후 분기
+        try {
+          const me = await getCurrentUser();
+          router.push(me.role === "admin" ? "/admin" : "/dashboard");
+        } catch {
+          router.push("/dashboard");
+        }
+        return;
+      }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         try {

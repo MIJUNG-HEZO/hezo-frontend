@@ -6,7 +6,8 @@ import ChatModal from "@/components/chat/ChatModal";
 import PricingModal from "@/components/chat/PricingModal";
 import AgreementModal from "@/components/chat/AgreementModal";
 import OnboardingDashboard from "@/components/dashboard/OnboardingDashboard";
-import { api, getSubscriptionStatus, getSites } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { api, getSubscriptionStatus, getSites, getMonitoringSnapshot, getMonitoringHistory } from "@/lib/api";
 import { isAuthenticated } from "@/lib/auth-guard";
 import { TopBar } from "@/components/layout/TopBar";
 import { Card } from "@/components/ui/Card";
@@ -59,6 +60,7 @@ export default function DashboardPage() {
   const [agreementLoading, setAgreementLoading] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
   const [hasSite, setHasSite] = useState<boolean | null>(null); // null = loading
+  const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
   const [userPlan, setUserPlan] = useState<"free" | "pro" | "max">("free");
   const [sitesUsed, setSitesUsed] = useState(0);
   const [sitesLimit, setSitesLimit] = useState(0);
@@ -67,9 +69,14 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isAuthenticated()) return;
 
-    // API에서 발급된(published) 사이트 유무 확인
+    // API에서 발급된(published) 사이트 유무 확인 + activeSiteId 설정
     getSites()
-      .then((sites) => setHasSite(sites.some((s) => s.is_published)))
+      .then((sites) => {
+        const published = sites.filter((s) => s.is_published);
+        setHasSite(published.length > 0);
+        const saved = typeof window !== "undefined" ? localStorage.getItem("hezo_active_site") : null;
+        setActiveSiteId(published.find((s) => s.id === saved)?.id ?? published[0]?.id ?? null);
+      })
       .catch(() => setHasSite(false));
 
     // 구독 상태 가져오기
@@ -138,6 +145,20 @@ export default function DashboardPage() {
       setAgreementLoading(false);
     }
   };
+
+  const { data: snapshot, isLoading: snapLoading } = useQuery({
+    queryKey: ["monitoring-snapshot", activeSiteId],
+    queryFn: () => getMonitoringSnapshot(activeSiteId!),
+    enabled: !!activeSiteId,
+    staleTime: 1000 * 60 * 60 * 24,
+  });
+
+  const { data: history } = useQuery({
+    queryKey: ["monitoring-history", activeSiteId],
+    queryFn: () => getMonitoringHistory(activeSiteId!),
+    enabled: !!activeSiteId,
+    staleTime: 1000 * 60 * 30,
+  });
 
   // 로딩 상태
   if (hasSite === null) {
@@ -209,94 +230,124 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <Card onClick={() => router.push("/dashboard/ai-score")}>
             <CardTitle>AI 친화도 점수</CardTitle>
-            <div className="flex items-center gap-[18px]">
-              <div className="flex-1">
-                <div className="flex items-baseline gap-1">
-                  <span className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">82</span>
-                  <span className="text-lg text-gray-400">/100</span>
+            {snapLoading ? (
+              <div className="h-20 animate-pulse rounded-md bg-gray-100" />
+            ) : snapshot ? (() => {
+              const geo = Object.values(snapshot.geo_files).filter(Boolean).length;
+              const jld = Object.values(snapshot.json_ld).filter(Boolean).length;
+              const score = Math.round(((geo / 4) * 50) + ((jld / 3) * 50));
+              return (
+                <div className="flex items-center gap-[18px]">
+                  <div className="flex-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">{score}</span>
+                      <span className="text-lg text-gray-400">/100</span>
+                    </div>
+                    <div className="mt-1.5">
+                      <Badge color={score >= 80 ? "success" : score >= 50 ? "warning" : "error"} size="sm">
+                        {score >= 80 ? "우수" : score >= 50 ? "보통" : "개선 필요"}
+                      </Badge>
+                    </div>
+                    <div className="mb-0.5 mt-3 text-xs text-gray-400">
+                      마지막 측정: {snapshot.from_cache ? "캐시" : "방금 전"}
+                    </div>
+                  </div>
+                  <Ring value={score} size={84} />
                 </div>
-                <div className="mt-1.5">
-                  <Badge color="success" size="sm">우수</Badge>
-                </div>
-                <div className="mb-0.5 mt-3 text-xs text-gray-400">지난 주 대비</div>
-                <Delta up>12점</Delta>
-              </div>
-              <Ring value={82} size={84} />
-            </div>
+              );
+            })() : null}
           </Card>
 
           <Card>
             <CardTitle>LLM 인용 메트릭스</CardTitle>
-            <div className="text-xs text-gray-400">종합 인용률</div>
-            <div className="flex items-baseline gap-0.5">
-              <span className="font-display text-[32px] font-bold tracking-[-0.02em] text-gray-900">34.7</span>
-              <span className="text-[17px] text-gray-400">%</span>
-            </div>
-            <div className="mb-3.5 mt-1">
-              <Delta up>8.3%p</Delta>
-            </div>
-            <div className="flex flex-col gap-2.5">
-              {[
-                ["ChatGPT", "42.1%", "bg-primary-500"],
-                ["Perplexity", "31.4%", "bg-blue-500"],
-                ["Claude", "30.6%", "bg-warning-500"],
-              ].map(([n, v, c]) => (
-                <div key={n} className="flex items-center gap-2">
-                  <span className={cn("h-2 w-2 rounded-full", c)} />
-                  <span className="text-[13px] text-gray-700">{n}</span>
-                  <span className="ml-auto text-[13px] font-semibold text-gray-900">{v}</span>
-                </div>
-              ))}
+            <div className="flex h-20 items-center justify-center rounded-md bg-gray-50">
+              <p className="text-sm text-gray-400">v1.1 출시 예정 — 준비 중</p>
             </div>
           </Card>
 
           <Card>
-            <CardTitle>총 트래픽</CardTitle>
-            <div className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">1,247</div>
-            <div className="mb-0.5 mt-1 text-xs text-gray-400">지난 주 대비</div>
-            <Delta up>18.6%</Delta>
-            <MiniBars data={[30, 45, 35, 55, 60, 50, 70]} color="bg-primary-100" />
+            <CardTitle>AI 봇 크롤 감지</CardTitle>
+            {history?.bot_crawls_available ? (
+              <div className="flex flex-col gap-2.5">
+                {[
+                  ["GPTBot", history.bot_crawls.gpt_bot],
+                  ["ClaudeBot", history.bot_crawls.claude_bot],
+                  ["PerplexityBot", history.bot_crawls.perplexity_bot],
+                  ["Naver Yeti", history.bot_crawls.yeti],
+                ].map(([name, count]) => (
+                  <div key={String(name)} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">{String(name)}</span>
+                    <span className="text-sm font-semibold text-gray-900">{count}회</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-20 items-center justify-center rounded-md bg-gray-50">
+                <p className="text-center text-xs text-gray-400">
+                  CloudFront 로그 활성화 후<br />수집됩니다
+                </p>
+              </div>
+            )}
           </Card>
         </div>
 
         {/* Row 2 */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <Card>
+            <CardTitle>사이트 상태</CardTitle>
+            {snapLoading ? (
+              <div className="h-20 animate-pulse rounded-md bg-gray-100" />
+            ) : snapshot ? (
+              <div className="flex flex-col gap-3.5">
+                {([
+                  ["응답 속도", snapshot.response_ms ? `${snapshot.response_ms}ms` : "측정 중", snapshot.response_ms !== null && snapshot.response_ms < 1000],
+                  ["SSL 인증서", snapshot.ssl_expiry_days !== null ? `${snapshot.ssl_expiry_days}일 남음` : "확인 중", (snapshot.ssl_expiry_days ?? 0) > 30],
+                  ["llms.txt", snapshot.geo_files.llms_txt ? "정상" : "없음", snapshot.geo_files.llms_txt],
+                  ["llms-full.txt", snapshot.geo_files.llms_full_txt ? "정상" : "없음", snapshot.geo_files.llms_full_txt],
+                ] as [string, string, boolean][]).map(([k, v, ok]) => (
+                  <div key={k} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">{k}</span>
+                    <span className="inline-flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900">{v}</span>
+                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${ok ? "bg-success-50" : "bg-error-50"}`}>
+                        <Icon name={ok ? "check" : "x"} size={13} className={ok ? "text-success-600" : "text-error-600"} />
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </Card>
+
+          <Card>
+            <CardTitle>응답속도 7일 추이</CardTitle>
+            {history?.response_ms_history.some((p) => p.value !== null) ? (
+              <>
+                <div className="text-xs text-gray-400">최근 측정</div>
+                <div className="font-display text-[32px] font-bold tracking-[-0.02em] text-gray-900">
+                  {history.response_ms_history.filter((p) => p.value !== null).at(-1)?.value}
+                  <span className="text-[17px] text-gray-400">ms</span>
+                </div>
+                <MiniBars
+                  data={history.response_ms_history.map((p) =>
+                    p.value ? Math.min(100, Math.round((p.value / 2000) * 100)) : 0
+                  )}
+                  color="bg-primary-100"
+                />
+              </>
+            ) : (
+              <div className="flex h-20 items-center justify-center rounded-md bg-gray-50">
+                <p className="text-xs text-gray-400">첫 측정 후 그래프가 표시됩니다</p>
+              </div>
+            )}
+          </Card>
+
+          <Card>
             <CardTitle>신규 문의 &amp; 예약</CardTitle>
             <div className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">23</div>
             <div className="mb-0.5 mt-1 text-xs text-gray-400">지난 주 대비</div>
             <Delta up>15.0%</Delta>
             <MiniBars data={[40, 55, 30, 65, 50, 60, 70]} color="bg-warning-200" />
-          </Card>
-
-          <Card>
-            <CardTitle>사이트 상태</CardTitle>
-            <div className="flex flex-col gap-3.5">
-              {[
-                ["사이트 가동률", "100%"],
-                ["SSL 인증서", "정상"],
-                ["최근 백업", "7시간 전"],
-              ].map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">{k}</span>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-900">{v}</span>
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-success-50">
-                      <Icon name="check" size={13} className="text-success-600" />
-                    </span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <CardTitle>방문자 회원</CardTitle>
-            <div className="text-xs text-gray-400">총 회원 수</div>
-            <div className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">412</div>
-            <div className="mb-0.5 mt-1 text-xs text-gray-400">지난 주 대비</div>
-            <Delta up>24명</Delta>
-            <MiniBars data={[20, 30, 35, 40, 55, 65, 70]} color="bg-primary-100" />
           </Card>
         </div>
 

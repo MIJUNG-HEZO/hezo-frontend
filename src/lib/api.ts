@@ -5,6 +5,8 @@ import type {
   UserResponse,
   OAuthLoginResponse,
   BillingCheckoutResponse,
+  MonitoringSnapshot,
+  MonitoringHistory,
 } from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -345,4 +347,16 @@ export interface PreviewResponse {
 
 export async function triggerPreview(siteId: string): Promise<PreviewResponse> {
   return api.post(`api/v1/sites/${siteId}/preview`).json<PreviewResponse>();
+}
+
+// --- Monitoring API ---
+
+/** GET /api/v1/sites/{siteId}/monitoring/snapshot — GEO·SSL·응답속도·JSON-LD 즉시 측정 (24h 캐시) */
+export async function getMonitoringSnapshot(siteId: string): Promise<MonitoringSnapshot> {
+  return api.get(`api/v1/sites/${siteId}/monitoring/snapshot`).json<MonitoringSnapshot>();
+}
+
+/** GET /api/v1/sites/{siteId}/monitoring/history — 7일 응답속도 시계열 + AI봇 크롤 */
+export async function getMonitoringHistory(siteId: string): Promise<MonitoringHistory> {
+  return api.get(`api/v1/sites/${siteId}/monitoring/history`).json<MonitoringHistory>();
 }
