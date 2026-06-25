@@ -1,108 +1,123 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchAdminPipeline, type AdminPipelineItem } from "@/lib/admin-api";
-import { cn } from "@/lib/utils";
+import { TopBar } from "@/components/layout/TopBar";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { api } from "@/lib/api";
 
-const STATUS_COLOR: Record<string, string> = {
-  draft:       "bg-gray-100 text-gray-600",
-  building:    "bg-blue-100 text-blue-700",
-  validating:  "bg-yellow-100 text-yellow-700",
-  published:   "bg-green-100 text-green-700",
-  failed:      "bg-red-100 text-red-700",
-  not_found:   "bg-gray-100 text-gray-400",
-  unknown:     "bg-gray-100 text-gray-400",
+interface PipelineItem {
+  site_id: string;
+  publish_status: string;
+  attempt: number | null;
+  updated_at: string | null;
+  error_message: string | null;
+}
+
+interface PipelineListResponse {
+  items: PipelineItem[];
+  total: number;
+}
+
+const statusBadge: Record<string, { color: "success" | "warning" | "error" | "gray"; label: string }> = {
+  published:    { color: "success", label: "발급 완료" },
+  building:     { color: "warning", label: "빌드 중" },
+  validating:   { color: "warning", label: "검증 중" },
+  provisioning: { color: "warning", label: "인프라 중" },
+  failed:       { color: "error",   label: "실패" },
+  rolled_back:  { color: "error",   label: "롤백" },
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  draft:       "대기",
-  building:    "빌드 중",
-  validating:  "검증 중",
-  published:   "발행 완료",
-  failed:      "실패",
-  not_found:   "없음",
-  unknown:     "알 수 없음",
-};
+function PipelineStats({ items }: { items: PipelineItem[] }) {
+  const counts = {
+    published:  items.filter((i) => i.publish_status === "published").length,
+    inProgress: items.filter((i) => ["building", "validating", "provisioning"].includes(i.publish_status)).length,
+    failed:     items.filter((i) => ["failed", "rolled_back"].includes(i.publish_status)).length,
+  };
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      {[
+        { label: "발급 완료", value: counts.published, color: "text-success-600" },
+        { label: "진행 중",   value: counts.inProgress, color: "text-warning-600" },
+        { label: "실패",      value: counts.failed,     color: "text-error-600" },
+      ].map(({ label, value, color }) => (
+        <Card key={label}>
+          <p className="text-sm text-gray-500">{label}</p>
+          <p className={`font-display text-4xl font-bold ${color}`}>{value}</p>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
-const SUMMARY_STATUSES = ["draft", "building", "validating", "published", "failed"] as const;
-
-export default function AdminPipelinePage() {
-  const [items, setItems] = useState<AdminPipelineItem[]>([]);
+export default function AdminPage() {
+  const [items, setItems] = useState<PipelineItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const cwUrl = process.env.NEXT_PUBLIC_CW_DASHBOARD_URL;
 
   useEffect(() => {
-    fetchAdminPipeline()
+    api.get("api/v1/admin/pipeline")
+      .json<PipelineListResponse>()
       .then((res) => setItems(res.items))
-      .catch(() => setError("파이프라인 데이터를 불러올 수 없습니다."))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const counts = items.reduce<Record<string, number>>((acc, it) => {
-    acc[it.publish_status] = (acc[it.publish_status] ?? 0) + 1;
-    return acc;
-  }, {});
-
   return (
-    <div className="p-8">
-      <h1 className="mb-6 text-xl font-bold text-gray-900">파이프라인 현황</h1>
+    <>
+      <TopBar title="HEZO 어드민" subtitle="파이프라인 현황 및 CloudWatch 모니터링" />
+      <div className="flex flex-col gap-6 p-8">
+        {loading ? (
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+        ) : (
+          <PipelineStats items={items} />
+        )}
 
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-5">
-        {SUMMARY_STATUSES.map((s) => (
-          <div key={s} className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="text-xs text-gray-500">{STATUS_LABEL[s]}</div>
-            <div className="mt-1 text-2xl font-bold text-gray-900">{counts[s] ?? 0}</div>
-          </div>
-        ))}
-      </div>
-
-      {loading && <p className="text-sm text-gray-400">불러오는 중...</p>}
-      {error && <p className="text-sm text-red-500">{error}</p>}
-
-      {!loading && !error && (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Site ID</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">상태</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">재시도</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">최종 업데이트</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">에러</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {items.map((it) => (
-                <tr key={it.site_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-xs text-gray-700">{it.site_id}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-xs font-medium",
-                        STATUS_COLOR[it.publish_status] ?? STATUS_COLOR.unknown,
-                      )}
-                    >
-                      {STATUS_LABEL[it.publish_status] ?? it.publish_status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{it.attempt ?? "-"}</td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {it.updated_at?.slice(0, 19).replace("T", " ") ?? "-"}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-red-500">{it.error_message ?? "-"}</td>
-                </tr>
-              ))}
-              {items.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
-                    파이프라인 데이터가 없습니다.
-                  </td>
-                </tr>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[380px_1fr]">
+          {/* 파이프라인 테이블 */}
+          <Card>
+            <h3 className="mb-4 text-sm font-semibold text-gray-500">파이프라인 상태 목록</h3>
+            <div className="flex flex-col gap-2">
+              {items.length === 0 && !loading && (
+                <p className="text-sm text-gray-400">데이터 없음</p>
               )}
-            </tbody>
-          </table>
+              {items.map((item) => {
+                const badge = statusBadge[item.publish_status] ?? { color: "gray" as const, label: item.publish_status };
+                return (
+                  <div key={item.site_id} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-xs text-gray-700">{item.site_id}</p>
+                      {item.error_message && (
+                        <p className="truncate text-[11px] text-error-500">{item.error_message}</p>
+                      )}
+                    </div>
+                    <Badge color={badge.color} size="sm">{badge.label}</Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* CloudWatch iframe */}
+          <Card>
+            <h3 className="mb-4 text-sm font-semibold text-gray-500">CloudWatch — HEZO-Admin</h3>
+            {cwUrl ? (
+              <iframe
+                src={cwUrl}
+                className="h-[600px] w-full rounded-md border border-gray-200"
+                title="HEZO-Admin CloudWatch Dashboard"
+              />
+            ) : (
+              <div className="flex h-[600px] items-center justify-center rounded-md border border-dashed border-gray-300">
+                <p className="text-sm text-gray-400">
+                  <code>NEXT_PUBLIC_CW_DASHBOARD_URL</code> 환경변수를 설정하세요
+                </p>
+              </div>
+            )}
+          </Card>
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
