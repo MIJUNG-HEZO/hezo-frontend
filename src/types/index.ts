@@ -254,3 +254,21 @@ export interface ScoreHistory {
   latest_delta: number;
   action_items: ActionItem[];
 }
+
+export interface LlmCitationRates {
+  claude: number | null;
+  chatgpt: number | null;
+  perplexity: number | null;
+  naver: number | null;
+}
+
+export interface CitationPoint {
+  date: string;
+  rates: LlmCitationRates;
+}
+
+export interface CitationHistory {
+  citation_history: CitationPoint[];
+  latest: LlmCitationRates | null;
+  query_count: number;
+}

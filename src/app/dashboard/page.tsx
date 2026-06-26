@@ -7,7 +7,7 @@ import PricingModal from "@/components/chat/PricingModal";
 import AgreementModal from "@/components/chat/AgreementModal";
 import OnboardingDashboard from "@/components/dashboard/OnboardingDashboard";
 import { useQuery } from "@tanstack/react-query";
-import { api, getSubscriptionStatus, getSites, getMonitoringSnapshot, getMonitoringHistory, getScoreHistory, getPipelineStatus } from "@/lib/api";
+import { api, getSubscriptionStatus, getSites, getMonitoringSnapshot, getMonitoringHistory, getScoreHistory, getCitationHistory, getPipelineStatus } from "@/lib/api";
 import { getPublishingState, clearPublishingState } from "@/lib/publishing-store";
 import PublishingDashboard from "@/components/dashboard/PublishingDashboard";
 import { isAuthenticated } from "@/lib/auth-guard";
@@ -206,6 +206,13 @@ export default function DashboardPage() {
   const { data: scoreHistory } = useQuery({
     queryKey: ["score-history", activeSiteId],
     queryFn: () => getScoreHistory(activeSiteId!),
+    enabled: !!activeSiteId,
+    staleTime: 1000 * 60 * 60 * 6,
+  });
+
+  const { data: citationHistory } = useQuery({
+    queryKey: ["citation-history", activeSiteId],
+    queryFn: () => getCitationHistory(activeSiteId!),
     enabled: !!activeSiteId,
     staleTime: 1000 * 60 * 60 * 6,
   });
@@ -644,34 +651,64 @@ export default function DashboardPage() {
 
         {/* Row 4 */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
-          {/* LLM 인용 현황 — v1.1 준비 중 */}
+          {/* LLM 인용 현황 — 실측 인용률 */}
           <Card>
             <CardTitle>LLM 인용 현황</CardTitle>
-            <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-5">
-              {/* 블러 미리보기 */}
-              <div className="select-none opacity-20 blur-[3px]">
-                <div className="grid grid-cols-3 gap-4">
-                  {["ChatGPT", "Perplexity", "Claude"].map((engine) => (
-                    <div key={engine} className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="h-4 w-4 rounded-full bg-gray-400" />
-                        <span className="text-sm font-semibold text-gray-700">{engine}</span>
+            {citationHistory?.latest ? (() => {
+              const latest = citationHistory.latest!;
+              const llms: { key: keyof typeof latest; label: string; color: string }[] = [
+                { key: "chatgpt",    label: "ChatGPT",    color: "bg-emerald-400" },
+                { key: "claude",     label: "Claude",     color: "bg-primary-400" },
+                { key: "perplexity", label: "Perplexity", color: "bg-violet-400"  },
+                { key: "naver",      label: "Naver",      color: "bg-green-500"   },
+              ];
+              return (
+                <div className="flex flex-col gap-3">
+                  <p className="text-[10px] text-gray-400">
+                    {citationHistory.query_count}개 질의 기준 · 최근 측정: {citationHistory.citation_history.at(-1)?.date ?? ""}
+                  </p>
+                  {llms.map(({ key, label, color }) => {
+                    const rate = latest[key];
+                    if (rate === null) return (
+                      <div key={key} className="flex items-center gap-3">
+                        <span className="w-20 flex-none text-sm text-gray-400">{label}</span>
+                        <span className="text-xs text-gray-300">API 키 미설정</span>
                       </div>
-                      <div className="h-3 w-full rounded bg-gray-300" />
-                      <div className="h-3 w-4/5 rounded bg-gray-300" />
-                    </div>
-                  ))}
+                    );
+                    const pct = Math.round(rate * 100);
+                    return (
+                      <div key={key}>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-700">{label}</span>
+                          <span className="text-sm font-bold text-gray-900">{pct}%</span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                          <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })() : (
+              <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-5">
+                <div className="select-none opacity-20 blur-[3px]">
+                  <div className="flex flex-col gap-3">
+                    {["ChatGPT", "Claude", "Perplexity", "Naver"].map((e) => (
+                      <div key={e} className="flex items-center gap-3">
+                        <span className="w-20 text-sm text-gray-700">{e}</span>
+                        <div className="h-2 flex-1 rounded-full bg-gray-300" />
+                        <span className="text-sm font-bold text-gray-700">--</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+                  <Icon name="bar-chart-2" size={20} className="text-gray-300" />
+                  <p className="text-xs text-gray-400">첫 주간 리포트 실행 후 표시됩니다</p>
                 </div>
               </div>
-              {/* 잠금 배지 */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
-                  <Icon name="lock" size={12} />
-                  v1.1 출시 예정
-                </span>
-                <p className="text-xs text-gray-500">실제 LLM 인용률 측정 기능이 준비 중입니다</p>
-              </div>
-            </div>
+            )}
           </Card>
 
           {/* AI 추천 개선 항목 — Haiku 생성 (리포트 에이전트) 우선, snapshot 파생 폴백 */}
