@@ -199,6 +199,14 @@ export interface JsonLd {
   service: boolean;
 }
 
+export interface LlmsFullQuality {
+  faq_count: number;
+  char_count: number;
+  has_core_services: boolean;
+  has_faq: boolean;
+  has_core_pages: boolean;
+}
+
 export interface MonitoringSnapshot {
   geo_files: GeoFiles;
   json_ld: JsonLd;
@@ -206,6 +214,7 @@ export interface MonitoringSnapshot {
   response_ms: number | null;
   pagespeed_mobile: number | null;
   pagespeed_desktop: number | null;
+  llms_full_quality: LlmsFullQuality | null;
   last_measured_at: string;
   from_cache: boolean;
 }
