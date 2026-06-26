@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { api, getSubscriptionStatus, publishSite, getPipelineStatus, sendChatMessage, triggerPreview, createSite } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { api, getSubscriptionStatus, publishSite, sendChatMessage, triggerPreview, createSite } from "@/lib/api";
+import { setPublishingState } from "@/lib/publishing-store";
 import PricingModal from "@/components/chat/PricingModal";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
@@ -116,6 +118,7 @@ interface ChatModalProps {
 }
 
 export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatModalProps) {
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("start");
   const [selectedStructure, setSelectedStructure] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -146,10 +149,6 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
   const [showPricingInChat, setShowPricingInChat] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<"free" | "pro" | "max">("free");
   const [publishing, setPublishing] = useState(false);
-  const [publishSuccess, setPublishSuccess] = useState(false);
-  const [pipelineMode, setPipelineMode] = useState<"aws_pipeline" | "local" | null>(null);
-  const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
-  const [pipelineMessage, setPipelineMessage] = useState<string>("");
 
   useEffect(() => {
     getSubscriptionStatus()
@@ -172,34 +171,6 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  // 파이프라인 폴링 (AWS 모드에서만)
-  useEffect(() => {
-    if (pipelineMode !== "aws_pipeline" || !siteId) return;
-    if (pipelineStatus === "published" || pipelineStatus === "generation_failed") return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await getPipelineStatus(siteId);
-        setPipelineStatus(res.pipeline_status);
-        if (res.pipeline_status === "generation_complete" || res.pipeline_status === "published") {
-          setPublishSuccess(true);
-          clearInterval(interval);
-          setTimeout(() => {
-            onClose();
-            window.location.href = "/dashboard";
-          }, 2000);
-        } else if (res.pipeline_status === "generation_failed") {
-          setError(res.error || "생성 에이전트 실행에 실패했습니다.");
-          clearInterval(interval);
-        }
-      } catch {
-        // 폴링 에러는 무시하고 계속 시도
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [pipelineMode, siteId, pipelineStatus, onClose]);
-
   const handlePublish = async () => {
     if (currentPlan === "free") {
       setShowPricingInChat(true);
@@ -212,20 +183,10 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     setPublishing(true);
     setError("");
     try {
-      const res = await publishSite(siteId);
-      setPipelineMode(res.mode);
-      setPipelineStatus(res.pipeline_status);
-      setPipelineMessage(res.message);
-
-      if (res.mode === "local") {
-        // 로컬 모드: 즉시 완료
-        setPublishSuccess(true);
-        setTimeout(() => {
-          onClose();
-          window.location.href = "/dashboard";
-        }, 1500);
-      }
-      // AWS 모드: useEffect 폴링이 상태 추적
+      await publishSite(siteId);
+      setPublishingState(siteId);
+      onClose();
+      router.push("/dashboard");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const response = (err as { response: Response }).response;
@@ -690,51 +651,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                   )}
                 </div>
 
-                {publishSuccess ? (
-                  <div className="rounded-lg border border-success-200 bg-success-50 p-3 text-center">
-                    <p className="inline-flex items-center gap-1.5 text-sm font-medium text-success-700">
-                      <Icon name="circle-check-big" size={16} /> 사이트가 성공적으로 발행되었습니다!
-                    </p>
-                    <p className="mt-1 text-xs text-success-600">잠시 후 대시보드로 이동합니다...</p>
-                  </div>
-                ) : pipelineMode === "aws_pipeline" && pipelineStatus === "running" ? (
-                  /* AWS 파이프라인 실행 중 — 단계별 진행 표시 */
-                  <div className="rounded-xl border border-primary-100 bg-primary-50 p-4">
-                    <div className="mb-3 flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-500">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
-                      </span>
-                      <span className="text-sm font-medium text-primary-800">파이프라인 실행 중</span>
-                    </div>
-                    <div className="space-y-2">
-                      {[
-                        { step: "생성 에이전트", desc: "Contract JSON → render_spec.json 변환 중", active: true },
-                        { step: "빌드 워커", desc: "정적 HTML/CSS 파일 생성", active: false },
-                        { step: "검증 에이전트", desc: "Lighthouse · Schema.org · AI 점수 검증", active: false },
-                        { step: "배포", desc: "S3 + CloudFront 배포", active: false },
-                      ].map((item, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          <span className={cn(
-                            "mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full text-[9px]",
-                            item.active ? "bg-primary-500 text-white" : "bg-gray-200 text-gray-400",
-                          )}>
-                            {i + 1}
-                          </span>
-                          <div>
-                            <p className={cn("text-xs font-medium", item.active ? "text-primary-800" : "text-gray-400")}>
-                              {item.step}
-                            </p>
-                            <p className="text-[10px] text-gray-400">{item.desc}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {pipelineMessage && (
-                      <p className="mt-3 text-[10px] text-primary-600">{pipelineMessage}</p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex gap-3">
+                <div className="flex gap-3">
                     <Button hierarchy="secondary" size="md" onClick={onClose} className="flex-none">
                       닫기
                     </Button>
@@ -746,10 +663,9 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                       className="flex-1"
                       iconLeading={<Icon name="rocket" size={15} />}
                     >
-                      {publishing ? "파이프라인 시작 중..." : "사이트 발행하기"}
+                      {publishing ? "발행 요청 중..." : "사이트 발행하기"}
                     </Button>
                   </div>
-                )}
 
                 <PricingModal
                   isOpen={showPricingInChat}
@@ -762,11 +678,9 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
                       setError("");
                       publishSite(siteId)
                         .then(() => {
-                          setPublishSuccess(true);
-                          setTimeout(() => {
-                            onClose();
-                            window.location.href = "/dashboard";
-                          }, 1500);
+                          setPublishingState(siteId);
+                          onClose();
+                          router.push("/dashboard");
                         })
                         .catch((err: unknown) => {
                           if (err && typeof err === "object" && "response" in err) {

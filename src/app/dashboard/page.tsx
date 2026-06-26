@@ -7,7 +7,9 @@ import PricingModal from "@/components/chat/PricingModal";
 import AgreementModal from "@/components/chat/AgreementModal";
 import OnboardingDashboard from "@/components/dashboard/OnboardingDashboard";
 import { useQuery } from "@tanstack/react-query";
-import { api, getSubscriptionStatus, getSites, getMonitoringSnapshot, getMonitoringHistory } from "@/lib/api";
+import { api, getSubscriptionStatus, getSites, getMonitoringSnapshot, getMonitoringHistory, getPipelineStatus } from "@/lib/api";
+import { getPublishingState, clearPublishingState } from "@/lib/publishing-store";
+import PublishingDashboard from "@/components/dashboard/PublishingDashboard";
 import { isAuthenticated } from "@/lib/auth-guard";
 import { TopBar } from "@/components/layout/TopBar";
 import { Card } from "@/components/ui/Card";
@@ -64,22 +66,58 @@ export default function DashboardPage() {
   const [userPlan, setUserPlan] = useState<"free" | "pro" | "max">("free");
   const [sitesUsed, setSitesUsed] = useState(0);
   const [sitesLimit, setSitesLimit] = useState(0);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishingSiteId, setPublishingSiteId] = useState<string | null>(null);
   const searchParams = useSearchParams();
 
-  useEffect(() => {
-    if (!isAuthenticated()) return;
-
-    // API에서 발급된(published) 사이트 유무 확인 + activeSiteId 설정
+  const loadSites = useCallback(() => {
     getSites()
       .then((sites) => {
         const published = sites.filter((s) => s.is_published);
         setHasSite(published.length > 0);
-        const saved = typeof window !== "undefined" ? localStorage.getItem("hezo_active_site") : null;
-        setActiveSiteId(published.find((s) => s.id === saved)?.id ?? published[0]?.id ?? null);
+        const saved =
+          typeof window !== "undefined"
+            ? localStorage.getItem("hezo_active_site")
+            : null;
+        setActiveSiteId(
+          published.find((s) => s.id === saved)?.id ?? published[0]?.id ?? null,
+        );
       })
       .catch(() => setHasSite(false));
+  }, []);
 
-    // 구독 상태 가져오기
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+
+    const pendingSiteId = getPublishingState();
+    if (pendingSiteId) {
+      getPipelineStatus(pendingSiteId)
+        .then((s) => {
+          if (s.pipeline_status === "published") {
+            clearPublishingState();
+            loadSites();
+          } else if (
+            s.pipeline_status === "failed" ||
+            s.pipeline_status === "generation_failed" ||
+            s.pipeline_status === "rolled_back"
+          ) {
+            clearPublishingState();
+            setHasSite(false);
+          } else {
+            setPublishingSiteId(pendingSiteId);
+            setIsPublishing(true);
+            setHasSite(false);
+          }
+        })
+        .catch(() => {
+          clearPublishingState();
+          loadSites();
+        });
+      return;
+    }
+
+    loadSites();
+
     getSubscriptionStatus()
       .then((status) => {
         setUserPlan(status.plan);
@@ -87,6 +125,24 @@ export default function DashboardPage() {
         setSitesLimit(status.sites_limit);
       })
       .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePublishComplete = useCallback(
+    (domainUrl?: string) => {
+      clearPublishingState();
+      setIsPublishing(false);
+      setPublishingSiteId(null);
+      void domainUrl;
+      loadSites();
+    },
+    [loadSites],
+  );
+
+  const handlePublishError = useCallback(() => {
+    clearPublishingState();
+    setIsPublishing(false);
+    setPublishingSiteId(null);
+    setHasSite(false);
   }, []);
 
   const handleNewSite = useCallback(() => {
@@ -166,6 +222,23 @@ export default function DashboardPage() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
       </div>
+    );
+  }
+
+  // 발급 진행 중 → PublishingDashboard
+  if (isPublishing && publishingSiteId) {
+    return (
+      <>
+        <TopBar
+          title="대시보드"
+          subtitle="홈페이지 발급이 진행되고 있습니다..."
+        />
+        <PublishingDashboard
+          siteId={publishingSiteId}
+          onComplete={handlePublishComplete}
+          onError={handlePublishError}
+        />
+      </>
     );
   }
 
