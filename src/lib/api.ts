@@ -7,6 +7,7 @@ import type {
   BillingCheckoutResponse,
   MonitoringSnapshot,
   MonitoringHistory,
+  ScoreHistory,
 } from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -359,4 +360,9 @@ export async function getMonitoringSnapshot(siteId: string): Promise<MonitoringS
 /** GET /api/v1/sites/{siteId}/monitoring/history — 7일 응답속도 시계열 + AI봇 크롤 */
 export async function getMonitoringHistory(siteId: string): Promise<MonitoringHistory> {
   return api.get(`api/v1/sites/${siteId}/monitoring/history`).json<MonitoringHistory>();
+}
+
+/** GET /api/v1/sites/{siteId}/monitoring/score-history — 리포트 에이전트 weekly AI 가시성 점수 (최대 90일) */
+export async function getScoreHistory(siteId: string): Promise<ScoreHistory> {
+  return api.get(`api/v1/sites/${siteId}/monitoring/score-history`).json<ScoreHistory>();
 }
