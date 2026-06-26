@@ -7,7 +7,7 @@ import PricingModal from "@/components/chat/PricingModal";
 import AgreementModal from "@/components/chat/AgreementModal";
 import OnboardingDashboard from "@/components/dashboard/OnboardingDashboard";
 import { useQuery } from "@tanstack/react-query";
-import { api, getSubscriptionStatus, getSites, getMonitoringSnapshot, getMonitoringHistory, getPipelineStatus } from "@/lib/api";
+import { api, getSubscriptionStatus, getSites, getMonitoringSnapshot, getMonitoringHistory, getScoreHistory, getPipelineStatus } from "@/lib/api";
 import { getPublishingState, clearPublishingState } from "@/lib/publishing-store";
 import PublishingDashboard from "@/components/dashboard/PublishingDashboard";
 import { isAuthenticated } from "@/lib/auth-guard";
@@ -203,6 +203,13 @@ export default function DashboardPage() {
     staleTime: 1000 * 60 * 30,
   });
 
+  const { data: scoreHistory } = useQuery({
+    queryKey: ["score-history", activeSiteId],
+    queryFn: () => getScoreHistory(activeSiteId!),
+    enabled: !!activeSiteId,
+    staleTime: 1000 * 60 * 60 * 6,
+  });
+
   // 로딩 상태
   if (hasSite === null) {
     return (
@@ -312,10 +319,55 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <CardTitle>LLM 인용 메트릭스</CardTitle>
-            <div className="flex h-20 items-center justify-center rounded-md bg-gray-50">
-              <p className="text-sm text-gray-400">v1.1 출시 예정 — 준비 중</p>
-            </div>
+            <CardTitle>AI 가시성 종합점수</CardTitle>
+            {scoreHistory && scoreHistory.latest_score !== null ? (() => {
+              const score = scoreHistory.latest_score!;
+              const delta = scoreHistory.latest_delta;
+              const trend = scoreHistory.score_history.slice(-7);
+              const maxScore = Math.max(...trend.map((p) => p.score), 1);
+              return (
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-baseline gap-1">
+                      <span className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">{score}</span>
+                      <span className="text-lg text-gray-400">/100</span>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge color={score >= 80 ? "success" : score >= 50 ? "warning" : "error"} size="sm">
+                        {score >= 80 ? "우수" : score >= 50 ? "보통" : "개선 필요"}
+                      </Badge>
+                      {delta !== 0 && (
+                        <span className={cn("text-xs font-semibold", delta > 0 ? "text-success-600" : "text-error-500")}>
+                          {delta > 0 ? "▲" : "▼"} {Math.abs(delta)}점
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {trend.length > 1 && (
+                    <div className="mt-3 flex h-10 items-end gap-1">
+                      {trend.map((p, i) => (
+                        <div
+                          key={i}
+                          className={cn("flex-1 rounded-t-[3px]", score >= 80 ? "bg-success-200" : score >= 50 ? "bg-warning-200" : "bg-error-200")}
+                          style={{ height: `${Math.round((p.score / maxScore) * 100)}%` }}
+                          title={`${p.date}: ${p.score}점`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-[10px] text-gray-400">리포트 에이전트 주간 측정</p>
+                </div>
+              );
+            })() : (
+              <div className="flex flex-col items-center justify-center gap-2 py-4">
+                <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
+                  <Icon name="bar-chart-2" size={20} className="text-gray-300" />
+                </div>
+                <p className="text-center text-xs text-gray-400">
+                  첫 주간 리포트 생성 후<br />점수가 표시됩니다
+                </p>
+              </div>
+            )}
           </Card>
 
           <Card>
@@ -622,12 +674,41 @@ export default function DashboardPage() {
             </div>
           </Card>
 
-          {/* AI 추천 개선 항목 — snapshot 기반 실측 파생 */}
+          {/* AI 추천 개선 항목 — Haiku 생성 (리포트 에이전트) 우선, snapshot 파생 폴백 */}
           <Card>
             <CardTitle>AI 추천 개선 항목</CardTitle>
-            {snapLoading ? (
-              <div className="h-28 animate-pulse rounded-md bg-gray-100" />
-            ) : snapshot ? (() => {
+            {(() => {
+              // Haiku 액션 아이템이 있으면 우선 표시
+              if (scoreHistory?.action_items.length) {
+                const levelColor: Record<string, string> = {
+                  red: "bg-error-50 text-error-700",
+                  yellow: "bg-warning-50 text-warning-700",
+                  green: "bg-success-50 text-success-700",
+                };
+                const levelIcon: Record<string, string> = { red: "🔴", yellow: "🟡", green: "🟢" };
+                return (
+                  <div className="flex flex-col gap-3">
+                    <p className="text-[10px] text-gray-400">Claude Haiku 주간 분석</p>
+                    {scoreHistory.action_items.slice(0, 3).map((item, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <span className={cn("inline-flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full text-[11px]", levelColor[item.level])}>
+                          {levelIcon[item.level]}
+                        </span>
+                        <span className="flex-1 text-sm leading-snug text-gray-700 [word-break:keep-all]">{item.text}</span>
+                      </div>
+                    ))}
+                    <button onClick={() => router.push("/dashboard/ai-score")} className={cn(ghostBtn, "mt-2 w-full justify-center")}>
+                      전체 확인
+                      <Icon name="arrow-right" size={15} className="text-gray-500" />
+                    </button>
+                  </div>
+                );
+              }
+
+              // snapshot 파생 폴백
+              if (snapLoading) return <div className="h-28 animate-pulse rounded-md bg-gray-100" />;
+              if (!snapshot) return null;
+
               const tips: { text: string; badge: string }[] = [];
               if (!snapshot.geo_files.llms_txt) tips.push({ text: "llms.txt 파일을 추가하면 AI 봇이 사이트를 쉽게 읽을 수 있습니다", badge: "GEO" });
               if (!snapshot.geo_files.llms_full_txt) tips.push({ text: "llms-full.txt에 FAQ를 추가해 AI 인용률을 높이세요", badge: "GEO" });
@@ -656,16 +737,13 @@ export default function DashboardPage() {
                       <span className="flex-1 text-sm leading-snug text-gray-700 [word-break:keep-all]">{tip.text}</span>
                     </div>
                   ))}
-                  <button
-                    onClick={() => router.push("/dashboard/ai-score")}
-                    className={cn(ghostBtn, "mt-2 w-full justify-center")}
-                  >
+                  <button onClick={() => router.push("/dashboard/ai-score")} className={cn(ghostBtn, "mt-2 w-full justify-center")}>
                     전체 확인
                     <Icon name="arrow-right" size={15} className="text-gray-500" />
                   </button>
                 </div>
               );
-            })() : null}
+            })()}
           </Card>
         </div>
       </div>

@@ -236,3 +236,21 @@ export interface MonitoringHistory {
   bot_crawls: BotCrawls;
   bot_crawls_available: boolean;
 }
+
+export interface ScorePoint {
+  date: string;
+  score: number;
+  delta: number;
+}
+
+export interface ActionItem {
+  level: "red" | "yellow" | "green";
+  text: string;
+}
+
+export interface ScoreHistory {
+  score_history: ScorePoint[];
+  latest_score: number | null;
+  latest_delta: number;
+  action_items: ActionItem[];
+}
