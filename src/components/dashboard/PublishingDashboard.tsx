@@ -14,15 +14,15 @@ interface PublishingDashboardProps {
 const STAGES: { label: string; sub: string }[] = [
   { label: "AI 콘텐츠 생성 중...",   sub: "AI가 맞춤 콘텐츠를 작성하고 있습니다" },
   { label: "품질 검증 중...",          sub: "GEO 구조 및 AI 친화성 검사 중" },
-  { label: "도메인 서버 구성 중...",  sub: "클라우드 인프라를 설정하고 있습니다 (약 5분)" },
+  { label: "도메인 서버 구성 중...",  sub: "클라우드 인프라를 설정하고 있습니다 (약 7분)" },
   { label: "발급 완료!",               sub: "" },
 ];
 
-function getActiveStep(ps: string | undefined): number {
+function getActiveStep(ps: string | undefined, domainUrl?: string | null): number {
   switch (ps) {
     case "validating":   return 1;
     case "provisioning": return 2;
-    case "published":    return 3;
+    case "published":    return domainUrl ? 3 : 2; // domain_url 있어야 완료
     default:             return 0;
   }
 }
@@ -37,7 +37,8 @@ export default function PublishingDashboard({
   useEffect(() => {
     if (!status) return;
 
-    if (status.pipeline_status === "published") {
+    // 콘텐츠 파이프라인 + IaC 파이프라인 모두 완료 → domain_url 있을 때만 전환
+    if (status.pipeline_status === "published" && status.domain_url) {
       const t = setTimeout(() => onComplete(status.domain_url), 2000);
       return () => clearTimeout(t);
     }
@@ -52,8 +53,9 @@ export default function PublishingDashboard({
   }, [status, onComplete, onError]);
 
   const ps = status?.pipeline_status;
-  const activeStep = getActiveStep(ps);
-  const isDone = ps === "published";
+  const domainUrl = status?.domain_url;
+  const activeStep = getActiveStep(ps, domainUrl);
+  const isDone = ps === "published" && !!domainUrl;
 
   return (
     <div className="flex min-h-[calc(100vh-64px)] items-center justify-center p-8">
