@@ -54,6 +54,7 @@ export default function DashboardPage() {
   const [sitesLimit, setSitesLimit] = useState(0);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishingSiteId, setPublishingSiteId] = useState<string | null>(null);
+  const [activePublishedAt, setActivePublishedAt] = useState<string | null>(null);
   const searchParams = useSearchParams();
 
   const loadSites = useCallback(() => {
@@ -65,9 +66,9 @@ export default function DashboardPage() {
           typeof window !== "undefined"
             ? localStorage.getItem("hezo_active_site")
             : null;
-        setActiveSiteId(
-          published.find((s) => s.id === saved)?.id ?? published[0]?.id ?? null,
-        );
+        const active = published.find((s) => s.id === saved) ?? published[0] ?? null;
+        setActiveSiteId(active?.id ?? null);
+        setActivePublishedAt(active?.published_at ?? null);
       })
       .catch(() => setHasSite(false));
   }, []);
@@ -399,28 +400,42 @@ export default function DashboardPage() {
             {snapLoading ? (
               <div className="h-20 animate-pulse rounded-md bg-gray-100" />
             ) : snapshot && (snapshot.pagespeed_mobile !== null || snapshot.pagespeed_desktop !== null) ? (
-              <div className="flex flex-col gap-3.5">
+              <div className="flex flex-col gap-4">
                 {([
                   ["모바일", snapshot.pagespeed_mobile],
                   ["데스크탑", snapshot.pagespeed_desktop],
                 ] as [string, number | null][]).map(([label, score]) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700">{label}</span>
-                    {score !== null ? (
-                      <span className={cn(
-                        "text-sm font-semibold",
-                        score >= 90 ? "text-success-600" : score >= 50 ? "text-warning-600" : "text-error-600",
-                      )}>
-                        {score}점
-                      </span>
-                    ) : (
-                      <span className="text-sm text-gray-400">측정 중</span>
+                  <div key={label}>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-sm text-gray-600">{label}</span>
+                      {score !== null ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-gray-900">{score}</span>
+                          <Badge
+                            color={score >= 90 ? "success" : score >= 50 ? "warning" : "error"}
+                            size="sm"
+                          >
+                            {score >= 90 ? "우수" : score >= 50 ? "보통" : "개선 필요"}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">측정 중</span>
+                      )}
+                    </div>
+                    {score !== null && (
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            score >= 90 ? "bg-success-500" : score >= 50 ? "bg-warning-400" : "bg-error-400",
+                          )}
+                          style={{ width: `${score}%` }}
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
-                <div className="mt-1 text-xs text-gray-400">
-                  Google PageSpeed Insights 기준
-                </div>
+                <p className="text-xs text-gray-400">Google PageSpeed Insights 기준</p>
               </div>
             ) : (
               <div className="flex h-20 items-center justify-center rounded-md bg-gray-50">
@@ -432,7 +447,150 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Row 3 */}
+        {/* Row 3 — Google 인덱싱 추정 + llms-full.txt 품질 */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* Google 인덱싱 추정 */}
+          <Card>
+            <CardTitle>Google 인덱싱 상태</CardTitle>
+            {(() => {
+              const publishedAt = activePublishedAt
+                ? new Date(activePublishedAt)
+                : null;
+              if (!publishedAt) {
+                return (
+                  <div className="flex h-20 items-center justify-center rounded-md bg-gray-50">
+                    <p className="text-xs text-gray-400">발행 정보 없음</p>
+                  </div>
+                );
+              }
+              const daysElapsed = Math.floor(
+                (Date.now() - publishedAt.getTime()) / (1000 * 60 * 60 * 24),
+              );
+              const status =
+                daysElapsed >= 14
+                  ? { label: "인덱싱됨 (추정)", color: "bg-success-500" }
+                  : daysElapsed >= 7
+                    ? { label: "인덱싱 중 (추정)", color: "bg-warning-400" }
+                    : { label: "인덱싱 시작 전", color: "bg-gray-300" };
+              const steps = [
+                { label: "발행", done: true, sub: "D+0" },
+                { label: "봇 방문", done: daysElapsed >= 2, sub: "D+2~" },
+                { label: "인덱싱 추정", done: daysElapsed >= 14, sub: "D+14~" },
+              ];
+              return (
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-400">추정 상태</p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className={`h-2.5 w-2.5 rounded-full ${status.color}`} />
+                        <span className="text-sm font-semibold text-gray-900">{status.label}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">발행 경과</p>
+                      <p className="mt-1.5 text-sm font-bold text-gray-900">
+                        D+{daysElapsed}
+                        <span className="ml-1 text-xs font-normal text-gray-400">
+                          ({publishedAt.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })} 발행)
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0">
+                    {steps.map((step, i) => (
+                      <div key={step.label} className="flex items-center flex-1">
+                        <div className="flex flex-col items-center min-w-0">
+                          <div
+                            className={cn(
+                              "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
+                              step.done ? "bg-success-500 text-white" : "bg-gray-100 text-gray-400",
+                            )}
+                          >
+                            {step.done ? <Icon name="check" size={12} /> : i + 1}
+                          </div>
+                          <p className={cn("mt-1 text-center text-[10px] font-medium leading-tight", step.done ? "text-success-700" : "text-gray-400")}>{step.label}</p>
+                          <p className="text-[9px] text-gray-400">{step.sub}</p>
+                        </div>
+                        {i < steps.length - 1 && (
+                          <div className={cn("h-0.5 flex-1 mx-1", step.done && steps[i + 1].done ? "bg-success-200" : "bg-gray-100")} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400">발행일 기반 추정 · Google Search Console 연동 시 정확한 데이터 제공</p>
+                </div>
+              );
+            })()}
+          </Card>
+
+          {/* llms-full.txt 품질 */}
+          <Card>
+            <CardTitle>llms-full.txt 품질</CardTitle>
+            {snapLoading ? (
+              <div className="h-20 animate-pulse rounded-md bg-gray-100" />
+            ) : snapshot?.llms_full_quality ? (() => {
+              const q = snapshot.llms_full_quality;
+              const faqOk = q.faq_count >= 10;
+              const charOk = q.char_count >= 3000;
+              return (
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-400">FAQ Q&amp;A 개수</p>
+                      <div className="mt-1 flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-gray-900">{q.faq_count}</span>
+                        <span className="text-xs text-gray-400">개</span>
+                      </div>
+                      <Badge color={faqOk ? "success" : "warning"} size="sm">
+                        {faqOk ? "충분 (10개↑)" : "보강 필요"}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">총 글자 수</p>
+                      <div className="mt-1 flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-gray-900">{q.char_count.toLocaleString()}</span>
+                        <span className="text-xs text-gray-400">자</span>
+                      </div>
+                      <Badge color={charOk ? "success" : "warning"} size="sm">
+                        {charOk ? "양호 (3,000자↑)" : "보강 필요"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs text-gray-400">섹션 구성</p>
+                    <div className="flex flex-col gap-1.5">
+                      {[
+                        ["## 핵심 서비스", q.has_core_services],
+                        ["## FAQ", q.has_faq],
+                        ["## 핵심 페이지", q.has_core_pages],
+                      ].map(([name, ok]) => (
+                        <div key={String(name)} className="flex items-center gap-2">
+                          <Icon
+                            name={ok ? "check" : "x"}
+                            size={13}
+                            className={ok ? "text-success-500" : "text-gray-300"}
+                          />
+                          <span className={cn("text-xs", ok ? "text-gray-700" : "text-gray-400")}>{String(name)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })() : snapshot?.geo_files.llms_full_txt === false ? (
+              <div className="flex h-28 items-center justify-center rounded-md bg-gray-50">
+                <p className="text-xs text-gray-400">llms-full.txt 파일이 없습니다</p>
+              </div>
+            ) : (
+              <div className="flex h-28 items-center justify-center rounded-md bg-gray-50">
+                <p className="text-xs text-gray-400">측정 중...</p>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Row 4 */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
           {/* LLM 인용 현황 — v1.1 준비 중 */}
           <Card>
