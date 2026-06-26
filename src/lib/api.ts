@@ -8,6 +8,7 @@ import type {
   MonitoringSnapshot,
   MonitoringHistory,
   ScoreHistory,
+  CitationHistory,
 } from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -365,4 +366,9 @@ export async function getMonitoringHistory(siteId: string): Promise<MonitoringHi
 /** GET /api/v1/sites/{siteId}/monitoring/score-history — 리포트 에이전트 weekly AI 가시성 점수 (최대 90일) */
 export async function getScoreHistory(siteId: string): Promise<ScoreHistory> {
   return api.get(`api/v1/sites/${siteId}/monitoring/score-history`).json<ScoreHistory>();
+}
+
+/** GET /api/v1/sites/{siteId}/monitoring/citation-history — LLM별 주간 인용률 (최대 90일) */
+export async function getCitationHistory(siteId: string): Promise<CitationHistory> {
+  return api.get(`api/v1/sites/${siteId}/monitoring/citation-history`).json<CitationHistory>();
 }
