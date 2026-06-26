@@ -23,20 +23,6 @@ function CardTitle({ children }: { children: ReactNode }) {
   return <h3 className="mb-3.5 text-sm font-semibold text-gray-500">{children}</h3>;
 }
 
-function Delta({ up, children }: { up?: boolean; children: ReactNode }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 text-[13.5px] font-semibold",
-        up ? "text-success-600" : "text-error-600",
-      )}
-    >
-      <Icon name={up ? "trending-up" : "trending-down"} size={15} />
-      {children}
-    </span>
-  );
-}
-
 function MiniBars({ data, color }: { data: number[]; color: string }) {
   return (
     <div className="mt-4 flex h-14 items-end gap-1.5">
@@ -276,19 +262,12 @@ export default function DashboardPage() {
       />
 
       <TopBar title="대시보드" subtitle="AI 검색 성과와 사이트 현황을 한눈에 확인하세요.">
-        <button className={ghostBtn}>
-          <Icon name="calendar" size={16} className="text-gray-500" />
-          2025.07.15 – 07.21
-        </button>
-        <button
-          className="relative rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100"
-          aria-label="알림"
-        >
-          <Icon name="bell" size={18} />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-error-500 text-[10px] font-bold text-white">
-            2
+        {snapshot?.last_measured_at && (
+          <span className={cn(ghostBtn, "cursor-default text-xs text-gray-400")}>
+            <Icon name="clock" size={14} className="text-gray-400" />
+            마지막 측정: {new Date(snapshot.last_measured_at).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
           </span>
-        </button>
+        )}
         <Button
           hierarchy="primary"
           onClick={handleNewSite}
@@ -416,62 +395,119 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <CardTitle>신규 문의 &amp; 예약</CardTitle>
-            <div className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">23</div>
-            <div className="mb-0.5 mt-1 text-xs text-gray-400">지난 주 대비</div>
-            <Delta up>15.0%</Delta>
-            <MiniBars data={[40, 55, 30, 65, 50, 60, 70]} color="bg-warning-200" />
+            <CardTitle>PageSpeed 점수</CardTitle>
+            {snapLoading ? (
+              <div className="h-20 animate-pulse rounded-md bg-gray-100" />
+            ) : snapshot && (snapshot.pagespeed_mobile !== null || snapshot.pagespeed_desktop !== null) ? (
+              <div className="flex flex-col gap-3.5">
+                {([
+                  ["모바일", snapshot.pagespeed_mobile],
+                  ["데스크탑", snapshot.pagespeed_desktop],
+                ] as [string, number | null][]).map(([label, score]) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">{label}</span>
+                    {score !== null ? (
+                      <span className={cn(
+                        "text-sm font-semibold",
+                        score >= 90 ? "text-success-600" : score >= 50 ? "text-warning-600" : "text-error-600",
+                      )}>
+                        {score}점
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-400">측정 중</span>
+                    )}
+                  </div>
+                ))}
+                <div className="mt-1 text-xs text-gray-400">
+                  Google PageSpeed Insights 기준
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-20 items-center justify-center rounded-md bg-gray-50">
+                <p className="text-xs text-gray-400">
+                  {snapshot ? "PageSpeed API 키 미설정" : "사이트 측정 중..."}
+                </p>
+              </div>
+            )}
           </Card>
         </div>
 
         {/* Row 3 */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
+          {/* LLM 인용 현황 — v1.1 준비 중 */}
           <Card>
-            <CardTitle>최근 LLM 인용 예시</CardTitle>
-            <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-3">
-              {[
-                { engine: "ChatGPT", color: "bg-primary-500", text: "HEZO는 AI 검색 최적화에 특화된 홈페이지 제작 플랫폼으로, llms.txt와 Schema.org를 자동으로 적용합니다.", ago: "3일 전" },
-                { engine: "Perplexity", color: "bg-blue-500", text: "소상공인을 위한 AI 친화적 웹사이트 구축 서비스 HEZO는 빠른 제작과 AI 노출 성과 측정 기능을 제공합니다.", ago: "5일 전" },
-                { engine: "Claude", color: "bg-warning-500", text: "HEZO 플랫폼은 한국 비즈니스 환경에 최적화된 AI 검색 대응 솔루션으로, 자동화된 구조화 데이터 생성이 강점입니다.", ago: "5일 전" },
-              ].map((it) => (
-                <div key={it.engine} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className={cn("h-5 w-5 rounded-full", it.color)} />
-                    <span className="text-[13.5px] font-semibold text-gray-900">{it.engine}</span>
-                  </div>
-                  <p className="text-[12.5px] leading-[1.6] text-gray-500 [word-break:keep-all]">
-                    &ldquo;{it.text}&rdquo;
-                  </p>
-                  <span className="text-[11px] text-gray-400">{it.ago}</span>
+            <CardTitle>LLM 인용 현황</CardTitle>
+            <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-5">
+              {/* 블러 미리보기 */}
+              <div className="select-none opacity-20 blur-[3px]">
+                <div className="grid grid-cols-3 gap-4">
+                  {["ChatGPT", "Perplexity", "Claude"].map((engine) => (
+                    <div key={engine} className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="h-4 w-4 rounded-full bg-gray-400" />
+                        <span className="text-sm font-semibold text-gray-700">{engine}</span>
+                      </div>
+                      <div className="h-3 w-full rounded bg-gray-300" />
+                      <div className="h-3 w-4/5 rounded bg-gray-300" />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              {/* 잠금 배지 */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
+                  <Icon name="lock" size={12} />
+                  v1.1 출시 예정
+                </span>
+                <p className="text-xs text-gray-500">실제 LLM 인용률 측정 기능이 준비 중입니다</p>
+              </div>
             </div>
           </Card>
 
+          {/* AI 추천 개선 항목 — snapshot 기반 실측 파생 */}
           <Card>
             <CardTitle>AI 추천 개선 항목</CardTitle>
-            <div className="flex flex-col gap-3">
-              {[
-                ["FAQ 페이지 질문 수를 늘려보세요", "+5점"],
-                ["핵심 서비스 페이지 메타 설명 추가", "+3점"],
-                ["이미지 alt 텍스트 보완", "+2점"],
-              ].map(([t, s]) => (
-                <div key={t} className="flex items-center gap-3">
-                  <span className="inline-flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full bg-primary-50">
-                    <Icon name="arrow-up" size={13} className="text-primary-600" />
-                  </span>
-                  <span className="flex-1 text-sm text-gray-700 [word-break:keep-all]">{t}</span>
-                  <span className="text-sm font-semibold text-primary-600">{s}</span>
+            {snapLoading ? (
+              <div className="h-28 animate-pulse rounded-md bg-gray-100" />
+            ) : snapshot ? (() => {
+              const tips: { text: string; badge: string }[] = [];
+              if (!snapshot.geo_files.llms_txt) tips.push({ text: "llms.txt 파일을 추가하면 AI 봇이 사이트를 쉽게 읽을 수 있습니다", badge: "GEO" });
+              if (!snapshot.geo_files.llms_full_txt) tips.push({ text: "llms-full.txt에 FAQ를 추가해 AI 인용률을 높이세요", badge: "GEO" });
+              if (!snapshot.json_ld.faq_page) tips.push({ text: "FAQPage JSON-LD를 추가하면 AI 검색 노출이 향상됩니다", badge: "JSON-LD" });
+              if (!snapshot.json_ld.local_business) tips.push({ text: "LocalBusiness 스키마로 지역 AI 검색 노출을 개선하세요", badge: "JSON-LD" });
+              if (snapshot.ssl_expiry_days !== null && snapshot.ssl_expiry_days < 60) tips.push({ text: `SSL 인증서 만료 ${snapshot.ssl_expiry_days}일 전 — 갱신을 확인하세요`, badge: "SSL" });
+              if (snapshot.response_ms !== null && snapshot.response_ms > 2000) tips.push({ text: "응답속도가 느립니다. 이미지 최적화를 검토하세요", badge: "성능" });
+
+              if (tips.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
+                    <Icon name="circle-check-big" size={28} className="text-success-500" />
+                    <p className="text-sm font-medium text-gray-700">모든 항목이 우수합니다</p>
+                    <p className="text-xs text-gray-400">주간 리포트에서 상세 분석을 확인하세요</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex flex-col gap-3">
+                  {tips.slice(0, 3).map((tip) => (
+                    <div key={tip.text} className="flex items-start gap-3">
+                      <span className="inline-flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full bg-warning-50 text-[10px] font-bold text-warning-700">
+                        {tip.badge.slice(0, 2)}
+                      </span>
+                      <span className="flex-1 text-sm leading-snug text-gray-700 [word-break:keep-all]">{tip.text}</span>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => router.push("/dashboard/ai-score")}
+                    className={cn(ghostBtn, "mt-2 w-full justify-center")}
+                  >
+                    전체 확인
+                    <Icon name="arrow-right" size={15} className="text-gray-500" />
+                  </button>
                 </div>
-              ))}
-            </div>
-            <button
-              onClick={() => router.push("/dashboard/ai-score")}
-              className={cn(ghostBtn, "mt-[18px] w-full justify-center")}
-            >
-              전체 개선 항목 보기
-              <Icon name="arrow-right" size={15} className="text-gray-500" />
-            </button>
+              );
+            })() : null}
           </Card>
         </div>
       </div>
