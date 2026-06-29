@@ -253,6 +253,7 @@ export interface ScoreHistory {
   latest_score: number | null;
   latest_delta: number;
   action_items: ActionItem[];
+  geo_file_score: number | null;  // 리포트 에이전트 GEO 품질 점수 (10개 체크, 주 1회)
 }
 
 export interface LlmCitationRates {

@@ -11,7 +11,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace("/auth/login");
+      router.replace("/admin/login");
       return;
     }
     getCurrentUser()
@@ -22,7 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           setChecked(true);
         }
       })
-      .catch(() => router.replace("/auth/login"));
+      .catch(() => router.replace("/admin/login"));
   }, [router]);
 
   if (!checked) {

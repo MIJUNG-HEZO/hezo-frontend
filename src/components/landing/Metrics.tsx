@@ -10,7 +10,7 @@ const stats: { value: string; suffix?: string; label: string }[] = [
 export function Metrics() {
   return (
     <Section className="pb-[88px] pt-2">
-      <div className="grid grid-cols-4 gap-6 rounded-2xl border border-gray-200 bg-gray-50 px-6 py-8">
+      <div className="grid grid-cols-4 gap-6 rounded-xl border border-gray-200 bg-surface-card px-6 py-8">
         {stats.map((s, i) => (
           <div
             key={s.label}
@@ -22,9 +22,7 @@ export function Metrics() {
                 <span className="text-lg font-semibold text-gray-400">{s.suffix}</span>
               )}
             </div>
-            <div className="text-sm font-medium text-gray-500 [word-break:keep-all]">
-              {s.label}
-            </div>
+            <div className="text-sm font-medium text-gray-500 [word-break:keep-all]">{s.label}</div>
           </div>
         ))}
       </div>

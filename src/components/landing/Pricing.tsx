@@ -3,9 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Section } from "./Section";
-import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
-import { buttonVariants, type ButtonHierarchy } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 
 const kr = "[word-break:keep-all] [text-wrap:pretty]";
@@ -18,7 +16,6 @@ type Plan = {
   sub: string;
   features: string[];
   cta: string;
-  hierarchy: ButtonHierarchy;
   highlighted?: boolean;
 };
 
@@ -38,7 +35,6 @@ const plans: Plan[] = [
       "hezo.app 서브도메인",
     ],
     cta: "무료로 시작하기",
-    hierarchy: "secondary",
   },
   {
     id: "pro",
@@ -57,7 +53,6 @@ const plans: Plan[] = [
       "우선 기술 지원",
     ],
     cta: "Pro 시작하기",
-    hierarchy: "primary",
   },
   {
     id: "max",
@@ -74,7 +69,6 @@ const plans: Plan[] = [
       "맞춤 API 연동 지원",
     ],
     cta: "도입 문의하기",
-    hierarchy: "secondary",
   },
 ];
 
@@ -82,11 +76,13 @@ export function Pricing() {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
 
   return (
-    <Section id="pricing" className="border-y border-gray-200 bg-gray-50 py-24">
+    <Section id="pricing" className="py-24">
       <div className="mx-auto mb-10 max-w-[680px] text-center">
-        <Badge color="brand">요금제</Badge>
+        <span className="mb-4 inline-block text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-600">
+          요금제
+        </span>
         <h2
-          className={`mb-3.5 mt-4 font-display text-[38px] font-bold tracking-[-0.02em] text-gray-900 ${kr}`}
+          className={`mb-3.5 mt-3 font-display text-[42px] font-bold tracking-[-0.04em] text-gray-900 ${kr}`}
         >
           무료로 시작하고, 필요할 때 확장하세요
         </h2>
@@ -96,9 +92,9 @@ export function Pricing() {
         </p>
       </div>
 
-      {/* billing toggle */}
+      {/* Billing toggle */}
       <div className="mb-11 flex justify-center">
-        <div className="inline-flex gap-1 rounded-full border border-gray-200 bg-white p-1">
+        <div className="inline-flex gap-1 rounded-full bg-gray-100 p-1">
           {(
             [
               ["monthly", "월간 결제"],
@@ -110,7 +106,9 @@ export function Pricing() {
               onClick={() => setBilling(key)}
               className={cn(
                 "flex items-center gap-1.5 rounded-full px-[18px] py-2 text-sm font-semibold transition-colors",
-                billing === key ? "bg-primary-500 text-white" : "text-gray-500",
+                billing === key
+                  ? "bg-white text-gray-900 shadow-xs"
+                  : "text-gray-500 hover:text-gray-700",
               )}
             >
               {label}
@@ -119,8 +117,8 @@ export function Pricing() {
                   className={cn(
                     "rounded-full px-1.5 py-0.5 text-[11px] font-bold",
                     billing === "yearly"
-                      ? "bg-white/20 text-white"
-                      : "bg-primary-50 text-primary-700",
+                      ? "bg-primary-50 text-primary-700"
+                      : "bg-primary-500/10 text-primary-600",
                   )}
                 >
                   -17%
@@ -136,58 +134,107 @@ export function Pricing() {
           <div
             key={p.id}
             className={cn(
-              "relative rounded-2xl bg-white p-[30px]",
+              "relative rounded-2xl p-[30px]",
               p.highlighted
-                ? "-mt-2 border-2 border-primary-500 shadow-xl"
-                : "border border-gray-200 shadow-xs",
+                ? "-mt-2 bg-surface-dark"
+                : "border border-gray-200 bg-white",
             )}
           >
             {p.highlighted && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <Badge color="brand" size="md">
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3 py-1 text-sm font-semibold text-white shadow-sm">
                   가장 인기
-                </Badge>
+                </span>
               </div>
             )}
-            <h3 className="font-display text-[22px] font-bold text-gray-900">{p.name}</h3>
-            <p className={`mb-5 mt-1.5 min-h-10 text-sm text-gray-500 ${kr}`}>{p.desc}</p>
+
+            <h3
+              className={cn(
+                "font-display text-[22px] font-bold",
+                p.highlighted ? "text-white" : "text-gray-900",
+              )}
+            >
+              {p.name}
+            </h3>
+            <p
+              className={cn(
+                `mb-5 mt-1.5 min-h-10 text-sm ${kr}`,
+                p.highlighted ? "text-white/50" : "text-gray-500",
+              )}
+            >
+              {p.desc}
+            </p>
+
             <div className="mb-1 flex items-baseline gap-1.5">
-              <span className="font-display text-[40px] font-bold tracking-[-0.02em] text-gray-900">
+              <span
+                className={cn(
+                  "font-display text-[40px] font-bold tracking-[-0.02em]",
+                  p.highlighted ? "text-white" : "text-gray-900",
+                )}
+              >
                 {p.price[billing]}
               </span>
               {p.id !== "free" && (
-                <span className="text-sm font-medium text-gray-400">{p.sub}</span>
+                <span
+                  className={cn(
+                    "text-sm font-medium",
+                    p.highlighted ? "text-white/55" : "text-gray-400",
+                  )}
+                >
+                  {p.sub}
+                </span>
               )}
             </div>
-            <div className="mb-[22px] min-h-[18px] text-[13px] text-gray-400">
+
+            <div
+              className={cn(
+                "mb-[22px] min-h-[18px] text-[13px]",
+                p.highlighted ? "text-white/50" : "text-gray-400",
+              )}
+            >
               {p.id === "free"
                 ? p.sub
                 : billing === "yearly"
                   ? "연간 결제 시 월 환산 금액"
                   : ""}
             </div>
+
             <Link
               href="/auth/login"
-              className={buttonVariants({
-                hierarchy: p.hierarchy,
-                size: "lg",
-                className: "w-full",
-              })}
+              className={cn(
+                "inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-base font-semibold transition-colors",
+                p.highlighted
+                  ? "bg-primary-500 text-white hover:bg-primary-600"
+                  : "border border-gray-300 text-gray-700 hover:bg-gray-50",
+              )}
             >
               {p.cta}
             </Link>
-            <div className="my-6 h-px bg-gray-200" />
+
+            <div
+              className={cn(
+                "my-6 h-px",
+                p.highlighted ? "bg-white/10" : "bg-gray-100",
+              )}
+            />
+
             <ul className="flex flex-col gap-3">
               {p.features.map((f, i) => (
                 <li
                   key={i}
                   className={cn(
                     "flex items-start gap-2.5 text-sm [word-break:keep-all]",
-                    i === 0 ? "font-semibold text-gray-700" : "text-gray-500",
+                    p.highlighted
+                      ? i === 0
+                        ? "font-semibold text-white/90"
+                        : "text-white/55"
+                      : i === 0
+                        ? "font-semibold text-gray-800"
+                        : "text-gray-500",
                   )}
                 >
                   <span className="mt-px flex-none">
-                    <Icon name="check" size={17} className="text-primary-600" />
+                    <Icon name="check" size={17} className="text-primary-500" />
                   </span>
                   {f}
                 </li>

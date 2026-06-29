@@ -3,10 +3,12 @@ export function Ring({
   value,
   size = 84,
   stroke = 9,
+  trackColor = "var(--color-gray-100)",
 }: {
   value: number;
   size?: number;
   stroke?: number;
+  trackColor?: string;
 }) {
   const r = size / 2 - stroke / 2 - 1;
   const c = 2 * Math.PI * r;
@@ -18,7 +20,7 @@ export function Ring({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="var(--color-gray-100)"
+          stroke={trackColor}
           strokeWidth={stroke}
         />
         <circle
