@@ -13,6 +13,7 @@ function isPublicRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname.startsWith("/auth") ||
+    pathname.startsWith("/admin") ||
     pathname.startsWith("/oauth") ||
     pathname.startsWith("/email-verification") ||
     pathname.startsWith("/preview") ||
@@ -80,7 +81,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <DashSidebar onHide={hideSidebar} />
         </div>
 
-        <main className="relative flex-1 overflow-auto bg-gray-50">
+        <main className="relative flex-1 overflow-auto bg-white">
           {/* 사이드바가 숨겨졌을 때 보이는 복원 버튼(HEZO 로고) */}
           <button
             type="button"

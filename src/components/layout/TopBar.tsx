@@ -11,7 +11,7 @@ export function TopBar({
   children?: ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-10 flex flex-col gap-3 border-b border-gray-200 bg-white/90 px-5 py-4 pl-16 backdrop-blur-md sm:flex-row sm:items-start sm:justify-between sm:gap-4 lg:px-8 lg:py-[22px]">
+    <header className="sticky top-0 z-10 flex flex-col gap-3 border-b border-gray-200 bg-white px-5 py-4 pl-16 sm:flex-row sm:items-start sm:justify-between sm:gap-4 lg:px-8 lg:py-[22px]">
       <div className="min-w-0">
         <h1 className="font-display text-xl font-bold tracking-[-0.02em] text-gray-900 sm:text-2xl">
           {title}

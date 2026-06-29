@@ -1,47 +1,54 @@
 import Link from "next/link";
 import { Section } from "./Section";
-import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
+import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button-variants";
 
-// Korean line-breaking: keep words intact, prefer balanced wraps.
 const kr = "[word-break:keep-all] [text-wrap:pretty]";
 
 export function Hero() {
   return (
-    <Section className="pb-16 pt-[72px]">
-      <div className="flex flex-col items-center gap-[22px] text-center">
-        <Badge color="brand" size="lg" dot>
-          AI 검색 최적화 · GEO
-        </Badge>
-        <h1
-          className={`max-w-[760px] font-display text-[56px] font-bold leading-[1.14] tracking-[-0.025em] text-gray-900 ${kr}`}
-        >
-          손님이 ChatGPT에게 물으면, 우리 가게가 나옵니다
-        </h1>
-        <p className={`max-w-[640px] text-[19px] leading-[1.55] text-gray-500 ${kr}`}>
-          이제 고객은 검색창이 아니라 AI에게 묻습니다. HEZO는 ChatGPT·Perplexity 같은
-          AI가 당신의 가게를 찾고 추천하도록, 검색에 최적화된 홈페이지를 자동으로 만들어
-          드립니다.
-        </p>
-        <div className="mt-1.5 flex gap-3">
-          <a href="#how" className={buttonVariants({ hierarchy: "secondary", size: "xl" })}>
-            <Icon name="play" size={18} className="text-gray-700" />
-            작동 방식 보기
-          </a>
-          <Link
-            href="/auth/login"
-            className={buttonVariants({ hierarchy: "primary", size: "xl" })}
+    <Section className="py-24">
+      <div className="grid grid-cols-1 items-center gap-16 lg:grid-cols-[7fr_5fr]">
+        {/* Left: headline + CTAs */}
+        <div className="flex flex-col gap-6">
+          <div className="inline-flex w-fit items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
+            <span className="text-sm font-semibold text-primary-700">AI 검색 최적화 · GEO</span>
+          </div>
+
+          <h1
+            className={`font-display text-[58px] font-bold leading-[1.06] tracking-[-0.04em] text-gray-900 lg:text-[64px] ${kr}`}
           >
-            무료로 시작하기
-            <Icon name="arrow-right" size={18} />
-          </Link>
+            손님이 ChatGPT에게 물으면,{" "}
+            <span className="text-primary-600">우리 가게</span>가 나옵니다
+          </h1>
+
+          <p className={`max-w-[520px] text-[18px] leading-[1.65] text-gray-500 ${kr}`}>
+            이제 고객은 검색창이 아니라 AI에게 묻습니다. HEZO는 ChatGPT·Perplexity 같은
+            AI가 당신의 가게를 찾고 추천하도록, 검색에 최적화된 홈페이지를 자동으로 만들어
+            드립니다.
+          </p>
+
+          <div className="flex gap-3">
+            <Link href="/auth/login" className={buttonVariants({ hierarchy: "primary", size: "xl" })}>
+              무료로 시작하기
+              <Icon name="arrow-right" size={18} />
+            </Link>
+            <a href="#how" className={cn(buttonVariants({ hierarchy: "secondary", size: "xl" }))}>
+              <Icon name="play" size={16} className="text-gray-400" />
+              작동 방식 보기
+            </a>
+          </div>
+
+          <div className="flex items-center gap-2 text-[13.5px] text-gray-400">
+            <Icon name="check" size={14} className="text-primary-500" />
+            신용카드 없이 시작 · 첫 사이트 무료
+          </div>
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[13.5px] text-gray-400">
-          <Icon name="check" size={15} className="text-success-600" />
-          신용카드 없이 시작 · 첫 사이트 무료
-        </div>
-        <div className="mt-11 w-full">
+
+        {/* Right: product mockup */}
+        <div className="relative hidden lg:block">
           <HeroMockup />
         </div>
       </div>
@@ -67,10 +74,10 @@ function HeroMockup() {
   const circumference = 2 * Math.PI * r;
 
   return (
-    <div className="relative mx-auto w-full max-w-[940px] pb-14">
-      {/* Browser window — the generated customer site */}
+    <div className="relative w-full pb-14">
+      {/* Browser window */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-        {/* chrome bar */}
+        {/* Chrome bar */}
         <div className="flex h-11 items-center gap-3.5 border-b border-gray-200 bg-gray-50 px-4">
           <div className="flex gap-[7px]">
             <span className="h-[11px] w-[11px] rounded-full bg-error-400" />
@@ -86,9 +93,8 @@ function HeroMockup() {
           <div className="w-13" />
         </div>
 
-        {/* generated site body */}
+        {/* Generated site body */}
         <div>
-          {/* site nav */}
           <div className="flex items-center justify-between border-b border-gray-100 px-7 py-4">
             <span className="font-display text-[17px] font-bold text-gray-900">바른한의원</span>
             <div className="flex gap-[18px]">
@@ -103,7 +109,6 @@ function HeroMockup() {
             </div>
           </div>
 
-          {/* site hero */}
           <div className="bg-[linear-gradient(160deg,var(--color-primary-50),#fff_70%)] px-7 pb-[26px] pt-[34px]">
             <div className="mb-3.5 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white px-2.5 py-1">
               <Icon name="badge-check" size={13} className="text-primary-600" />
@@ -127,7 +132,6 @@ function HeroMockup() {
             </div>
           </div>
 
-          {/* service cards */}
           <div className="grid grid-cols-4 gap-2.5 px-7 pb-[30px] pt-5">
             {services.map((s) => (
               <div key={s.label} className="rounded-lg border border-gray-200 px-3 py-3.5">
@@ -143,17 +147,18 @@ function HeroMockup() {
       </div>
 
       {/* Floating: AI 친화도 점수 card */}
-      <div className="absolute -right-2 bottom-0 w-[268px] rounded-2xl border border-gray-200 bg-white p-[18px] shadow-2xl">
+      <div className="absolute -right-4 bottom-0 w-[260px] rounded-xl border border-gray-200 bg-white p-[18px] shadow-lg">
         <div className="mb-3.5 flex items-center justify-between">
           <span className="text-[12.5px] font-semibold text-gray-500">AI 친화도 점수</span>
-          <Badge color="success" size="sm" dot>
-            실시간
-          </Badge>
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
+            <span className="text-[10px] font-semibold text-primary-700">실시간</span>
+          </div>
         </div>
         <div className="flex items-end gap-3.5">
           <div className="relative h-[84px] w-[84px] flex-none">
             <svg width="84" height="84" viewBox="0 0 84 84">
-              <circle cx="42" cy="42" r={r} fill="none" stroke="var(--color-gray-100)" strokeWidth="9" />
+              <circle cx="42" cy="42" r={r} fill="none" stroke="rgba(0,0,0,0.07)" strokeWidth="9" />
               <circle
                 cx="42"
                 cy="42"
@@ -175,7 +180,7 @@ function HeroMockup() {
           <div className="flex flex-1 flex-col gap-[9px]">
             {scoreBars.map(([label, v]) => (
               <div key={label}>
-                <div className="mb-[3px] text-[10.5px] text-gray-500">{label}</div>
+                <div className="mb-[3px] text-[10.5px] text-gray-400">{label}</div>
                 <div className="h-[5px] overflow-hidden rounded-[3px] bg-gray-100">
                   <div
                     className="h-full rounded-[3px] bg-primary-500"
@@ -188,15 +193,28 @@ function HeroMockup() {
         </div>
       </div>
 
-      {/* Floating: LLM citation chip */}
-      <div className="absolute -left-2.5 top-24 flex items-center gap-2.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-xl">
-        <div className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-primary-50">
-          <Icon name="quote" size={15} className="text-primary-600" />
+      {/* Floating: ChatGPT citation chip */}
+      <div className="absolute -left-4 top-24 flex items-center gap-2.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-md">
+        <div className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-[#10a37f]/10">
+          <Icon name="quote" size={15} className="text-[#10a37f]" />
         </div>
         <div>
           <div className="text-xs font-semibold text-gray-900">ChatGPT가 인용함</div>
           <div className="text-[10.5px] text-gray-500">&ldquo;강남 추나요법 한의원 추천&rdquo;</div>
         </div>
+        <span className="ml-1 h-1.5 w-1.5 flex-none rounded-full bg-[#10a37f]" />
+      </div>
+
+      {/* Floating: Perplexity citation chip */}
+      <div className="absolute -left-4 bottom-20 flex items-center gap-2.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-md">
+        <div className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-[#20B8CD]/10">
+          <Icon name="search" size={14} className="text-[#20B8CD]" />
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-gray-900">Perplexity가 인용함</div>
+          <div className="text-[10.5px] text-gray-500">&ldquo;서울 전통 한의원 추천&rdquo;</div>
+        </div>
+        <span className="ml-1 h-1.5 w-1.5 flex-none rounded-full bg-[#20B8CD]" />
       </div>
     </div>
   );

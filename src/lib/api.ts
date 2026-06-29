@@ -22,8 +22,13 @@ function getToken(): string | null {
 const handle401: BeforeErrorHook = ({ error }) => {
   if (isHTTPError(error) && error.response.status === 401) {
     localStorage.removeItem("access_token");
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/auth")) {
-      window.location.href = "/auth/login";
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname;
+      if (path.startsWith("/admin")) {
+        window.location.href = "/admin/login";
+      } else if (!path.startsWith("/auth")) {
+        window.location.href = "/auth/login";
+      }
     }
   }
   return error;

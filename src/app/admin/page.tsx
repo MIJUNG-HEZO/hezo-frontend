@@ -57,11 +57,16 @@ export default function AdminPage() {
   const cwUrl = process.env.NEXT_PUBLIC_CW_DASHBOARD_URL;
 
   useEffect(() => {
-    api.get("api/v1/admin/pipeline")
-      .json<PipelineListResponse>()
-      .then((res) => setItems(res.items))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const fetchPipeline = () =>
+      api.get("api/v1/admin/pipeline")
+        .json<PipelineListResponse>()
+        .then((res) => setItems(res.items))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+
+    fetchPipeline();
+    const timer = setInterval(fetchPipeline, 10_000);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -99,22 +104,31 @@ export default function AdminPage() {
             </div>
           </Card>
 
-          {/* CloudWatch iframe */}
+          {/* CloudWatch 링크 */}
           <Card>
             <h3 className="mb-4 text-sm font-semibold text-gray-500">CloudWatch — HEZO-Admin</h3>
-            {cwUrl ? (
-              <iframe
-                src={cwUrl}
-                className="h-[600px] w-full rounded-md border border-gray-200"
-                title="HEZO-Admin CloudWatch Dashboard"
-              />
-            ) : (
-              <div className="flex h-[600px] items-center justify-center rounded-md border border-dashed border-gray-300">
+            <div className="flex h-[200px] flex-col items-center justify-center gap-4 rounded-md border border-dashed border-gray-200">
+              {cwUrl ? (
+                <>
+                  <p className="text-sm text-gray-500">AWS CloudWatch 대시보드에서 에이전트 메트릭을 확인합니다.</p>
+                  <a
+                    href={cwUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
+                  >
+                    CloudWatch 대시보드 열기
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M2 2h10v10M12 2 2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                  </a>
+                </>
+              ) : (
                 <p className="text-sm text-gray-400">
                   <code>NEXT_PUBLIC_CW_DASHBOARD_URL</code> 환경변수를 설정하세요
                 </p>
-              </div>
-            )}
+              )}
+            </div>
           </Card>
         </div>
       </div>

@@ -1,262 +1,606 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TopBar } from "@/components/layout/TopBar";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Ring } from "@/components/dashboard/Ring";
-import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+import { getSites, getMonitoringSnapshot, getScoreHistory } from "@/lib/api";
+import { isAuthenticated } from "@/lib/auth-guard";
+import type { MonitoringSnapshot } from "@/types";
 
-type Status = "good" | "warn" | "bad";
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-const criteria: { name: string; score: number; icon: IconName; status: Status }[] = [
-  { name: "llms.txt 존재 / 완성도", score: 85, icon: "file-text", status: "good" },
-  { name: "Schema.org JSON-LD 커버리지", score: 92, icon: "braces", status: "good" },
-  { name: "FAQ 구조 충실도", score: 45, icon: "circle-help", status: "bad" },
-  { name: "시맨틱 HTML 비율", score: 90, icon: "code", status: "good" },
-  { name: "메타 태그 충실도", score: 88, icon: "tag", status: "good" },
-  { name: "한국어 청크 크기 분포", score: 72, icon: "type", status: "warn" },
-  { name: "엔티티 일관성", score: 78, icon: "link", status: "warn" },
-  { name: "페이지 속도", score: 95, icon: "zap", status: "good" },
-];
+type Status = "good" | "warn" | "bad" | "na";
 
-const total = Math.round(
-  criteria.reduce((sum, c) => sum + c.score, 0) / criteria.length,
-);
+interface Criterion {
+  name: string;
+  score: number | null;
+  icon: IconName;
+  status: Status;
+  detail: string;
+}
+
+// ── Score derivation ───────────────────────────────────────────────────────────
+
+function toStatus(score: number | null): Status {
+  if (score === null) return "na";
+  if (score >= 80) return "good";
+  if (score >= 50) return "warn";
+  return "bad";
+}
+
+function deriveCriteria(snapshot: MonitoringSnapshot): Criterion[] {
+  const q = snapshot.llms_full_quality;
+  const faqCount = q?.faq_count ?? 0;
+
+  const jldActive = [
+    snapshot.json_ld.local_business,
+    snapshot.json_ld.faq_page,
+    snapshot.json_ld.service,
+  ].filter(Boolean);
+  const jldScore = Math.round((jldActive.length / 3) * 100);
+
+  const llmsTxtScore = !snapshot.geo_files.llms_txt
+    ? 0
+    : q?.has_core_pages
+      ? 90
+      : 65;
+
+  const llmsFullScore = !snapshot.geo_files.llms_full_txt
+    ? 0
+    : faqCount >= 5
+      ? 100
+      : faqCount >= 3
+        ? 80
+        : faqCount >= 1
+          ? 55
+          : 35;
+
+  const faqPageScore = snapshot.json_ld.faq_page
+    ? 100
+    : q?.has_faq
+      ? 30
+      : 0;
+
+  const psValues = [snapshot.pagespeed_mobile, snapshot.pagespeed_desktop].filter(
+    (v): v is number => v !== null,
+  );
+  const pageSpeedScore =
+    psValues.length > 0
+      ? Math.round(psValues.reduce((a, b) => a + b, 0) / psValues.length)
+      : null;
+
+  const ms = snapshot.response_ms;
+  const responseScore =
+    ms === null ? null : ms < 500 ? 100 : ms < 1000 ? 80 : ms < 2000 ? 50 : 20;
+
+  return [
+    {
+      name: "llms.txt 존재 / 완성도",
+      score: llmsTxtScore,
+      icon: "file-text",
+      status: toStatus(llmsTxtScore),
+      detail: snapshot.geo_files.llms_txt
+        ? q?.has_core_pages
+          ? "핵심 페이지 섹션 포함"
+          : "핵심 페이지 섹션 미포함"
+        : "파일 없음",
+    },
+    {
+      name: "llms-full.txt FAQ 충실도",
+      score: llmsFullScore,
+      icon: "clipboard-list",
+      status: toStatus(llmsFullScore),
+      detail: snapshot.geo_files.llms_full_txt
+        ? `FAQ ${faqCount}개${faqCount >= 3 ? " (기준 충족)" : " (3개 이상 권장)"}`
+        : "파일 없음",
+    },
+    {
+      name: "JSON-LD 구조화 데이터",
+      score: jldScore,
+      icon: "braces",
+      status: toStatus(jldScore),
+      detail:
+        jldActive.length > 0
+          ? `${jldActive.length}/3 스키마 적용`
+          : "구조화 데이터 없음",
+    },
+    {
+      name: "FAQPage 스키마",
+      score: faqPageScore,
+      icon: "circle-help",
+      status: toStatus(faqPageScore),
+      detail: snapshot.json_ld.faq_page
+        ? "JSON-LD 적용됨"
+        : q?.has_faq
+          ? "llms-full.txt에만 존재"
+          : "미적용",
+    },
+    {
+      name: "sitemap.xml",
+      score: snapshot.geo_files.sitemap_xml ? 100 : 0,
+      icon: "map-pin",
+      status: toStatus(snapshot.geo_files.sitemap_xml ? 100 : 0),
+      detail: snapshot.geo_files.sitemap_xml ? "정상" : "파일 없음",
+    },
+    {
+      name: "robots.txt AI 봇 허용",
+      score: snapshot.geo_files.robots_txt ? 100 : 0,
+      icon: "shield-check",
+      status: toStatus(snapshot.geo_files.robots_txt ? 100 : 0),
+      detail: snapshot.geo_files.robots_txt
+        ? "GPTBot · ClaudeBot · Yeti 허용"
+        : "파일 없음",
+    },
+    {
+      name: "페이지 속도",
+      score: pageSpeedScore,
+      icon: "zap",
+      status: toStatus(pageSpeedScore),
+      detail:
+        pageSpeedScore !== null
+          ? `모바일 ${snapshot.pagespeed_mobile ?? "–"} / 데스크탑 ${snapshot.pagespeed_desktop ?? "–"}`
+          : "측정 중",
+    },
+    {
+      name: "응답 속도",
+      score: responseScore,
+      icon: "clock",
+      status: toStatus(responseScore),
+      detail: ms !== null ? `${ms}ms` : "측정 중",
+    },
+  ];
+}
+
+/** 리포트 에이전트 실측값 없을 때 쓰는 프론트 실시간 fallback */
+function computeFallbackScore(snapshot: MonitoringSnapshot): number {
+  const geo = Object.values(snapshot.geo_files).filter(Boolean).length;
+  const jld = Object.values(snapshot.json_ld).filter(Boolean).length;
+  return Math.round(((geo / 4) * 50) + ((jld / 3) * 50));
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 const statusBar: Record<Status, string> = {
   good: "bg-success-500",
-  warn: "bg-warning-500",
-  bad: "bg-error-500",
+  warn: "bg-warning-400",
+  bad: "bg-error-400",
+  na: "bg-gray-200",
 };
-const statusText: Record<Status, string> = { good: "양호", warn: "보통", bad: "부족" };
+
+const statusText: Record<Status, string> = {
+  good: "양호",
+  warn: "보통",
+  bad: "부족",
+  na: "미측정",
+};
+
 const statusFg: Record<Status, string> = {
-  good: "text-success-600",
-  warn: "text-warning-600",
+  good: "text-success-700",
+  warn: "text-warning-700",
   bad: "text-error-600",
+  na: "text-gray-400",
 };
 
-const levels = [
-  { range: "90 – 100", label: "매우 우수", min: 90, max: 100 },
-  { range: "70 – 89", label: "우수", min: 70, max: 89 },
-  { range: "50 – 69", label: "보통", min: 50, max: 69 },
-  { range: "30 – 49", label: "개선 필요", min: 30, max: 49 },
-  { range: "0 – 29", label: "매우 낮음", min: 0, max: 29 },
-];
-
-const summaryItems: { t: string; warn: boolean }[] = [
-  { t: "FAQ 구조 보완이 필요합니다.", warn: true },
-  { t: "한국어 청크 길이가 다소 깁니다.", warn: true },
-  { t: "시맨틱 구조가 잘 적용되었습니다.", warn: false },
-  { t: "메타 태그가 최적화되었습니다.", warn: false },
-  { t: "페이지 속도가 우수합니다.", warn: false },
-];
-
-const improvements = [
-  { n: 1, title: "FAQ 콘텐츠 확장", desc: "자주 묻는 질문을 5개 이상 추가하면 AI 답변 노출 확률이 높아집니다.", impact: "+15점 예상", action: "FAQ 추가하기" },
-  { n: 2, title: "한국어 청크 최적화", desc: "텍스트 블록을 200~400자 단위로 분할하여 AI 파싱 효율을 높이세요.", impact: "+8점 예상", action: "가이드 보기" },
-  { n: 3, title: "엔티티 정보 보완", desc: "기관명, 주소, 연락처 등의 일관성을 전체 페이지에 걸쳐 강화하세요.", impact: "+5점 예상", action: "엔티티 관리" },
-];
-
-function SummaryHead({ icon, title }: { icon: IconName; title: string }) {
+function CriterionCard({ c }: { c: Criterion }) {
   return (
-    <div className="mb-2.5 flex items-center gap-2">
-      <Icon name={icon} size={16} className="text-primary-600" />
-      <span className="text-[13.5px] font-semibold text-gray-500">{title}</span>
+    <Card padding={20}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-md border border-gray-200 bg-gray-50">
+            <Icon name={c.icon} size={16} className="text-gray-500" />
+          </span>
+          <span className="text-sm font-semibold text-gray-700 [word-break:keep-all]">
+            {c.name}
+          </span>
+        </div>
+        <span className="flex-none font-display text-[19px] font-bold text-gray-900">
+          {c.score !== null ? c.score : "–"}
+          <span className="text-[13px] font-semibold text-gray-400">/100</span>
+        </span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+        <div
+          className={cn("h-full rounded-full transition-all", statusBar[c.status])}
+          style={{ width: `${c.score ?? 0}%` }}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <span className="truncate text-[11.5px] text-gray-400 [word-break:keep-all]">
+          {c.detail}
+        </span>
+        <span className={cn("flex-none text-[11px] font-semibold", statusFg[c.status])}>
+          {statusText[c.status]}
+        </span>
+      </div>
+    </Card>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 animate-pulse rounded-md bg-gray-100" />
+          <div className="h-4 w-32 animate-pulse rounded bg-gray-100" />
+        </div>
+        <div className="h-6 w-12 animate-pulse rounded bg-gray-100" />
+      </div>
+      <div className="h-1.5 animate-pulse rounded-full bg-gray-100" />
+      <div className="mt-2 h-3 w-24 animate-pulse rounded bg-gray-100" />
     </div>
   );
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function AIScorePage() {
+  const queryClient = useQueryClient();
+  const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
+  const [siteResolved, setSiteResolved] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+    const saved =
+      typeof window !== "undefined" ? localStorage.getItem("hezo_active_site") : null;
+    getSites()
+      .then((sites) => {
+        const published = sites.filter((s) => s.is_published);
+        const match = published.find((s) => s.id === saved) ?? published[0] ?? null;
+        setActiveSiteId(match?.id ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setSiteResolved(true));
+  }, []);
+
+  const {
+    data: snapshot,
+    isLoading: snapLoading,
+    isError: snapError,
+    dataUpdatedAt,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: ["monitoring-snapshot", activeSiteId],
+    queryFn: () => getMonitoringSnapshot(activeSiteId!),
+    enabled: !!activeSiteId,
+    staleTime: 1000 * 60 * 60 * 24,
+  });
+
+  const { data: scoreHistory } = useQuery({
+    queryKey: ["score-history", activeSiteId],
+    queryFn: () => getScoreHistory(activeSiteId!),
+    enabled: !!activeSiteId,
+    staleTime: 1000 * 60 * 60 * 6,
+  });
+
+  const handleRefetch = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["monitoring-snapshot", activeSiteId] });
+    void refetch();
+  }, [queryClient, activeSiteId, refetch]);
+
+  const criteria = snapshot ? deriveCriteria(snapshot) : null;
+  // geo_file_score: 리포트 에이전트 실측 (10개 체크 기준) — 가장 정확
+  // fallback: 프론트 실시간 계산 (존재 여부 binary) — 리포트 전 초기 상태
+  const isFromReport = scoreHistory?.geo_file_score != null;
+  const total = isFromReport
+    ? scoreHistory!.geo_file_score
+    : snapshot
+      ? computeFallbackScore(snapshot)
+      : null;
+  const totalStatus = total !== null ? toStatus(total) : "na";
+  const totalLabel =
+    total !== null
+      ? total >= 80
+        ? "우수"
+        : total >= 50
+          ? "보통"
+          : "개선 필요"
+      : "–";
+
+  const lastMeasuredAt = snapshot?.last_measured_at
+    ? new Date(snapshot.last_measured_at).toLocaleDateString("ko-KR", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : dataUpdatedAt
+      ? new Date(dataUpdatedAt).toLocaleDateString("ko-KR", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+
+  // ── Improvement items ──────────────────────────────────────────────────────
+  // Prefer Claude Haiku action_items from ScoreHistory; fallback to criteria hints.
+  const actionItems: { level: "red" | "yellow" | "green"; text: string }[] =
+    scoreHistory?.action_items.length
+      ? scoreHistory.action_items
+      : criteria
+        ? criteria
+            .filter((c) => c.status === "bad" || c.status === "warn")
+            .slice(0, 4)
+            .map((c) => ({
+              level: c.status === "bad" ? ("red" as const) : ("yellow" as const),
+              text: `${c.name}을 개선하면 AI 친화도가 향상됩니다.`,
+            }))
+        : [];
+
+  const levelStyle: Record<string, string> = {
+    red: "bg-error-50 text-error-700",
+    yellow: "bg-warning-50 text-warning-700",
+    green: "bg-success-50 text-success-700",
+  };
+  const levelLabel: Record<string, string> = { red: "긴급", yellow: "권고", green: "양호" };
+
+  // ── Early: not authenticated ───────────────────────────────────────────────
+
+  if (siteResolved && !activeSiteId) {
+    return (
+      <>
+        <TopBar
+          title="AI 친화 구조화 수준 검증"
+          subtitle="사이트가 AI에 얼마나 잘 인식되는지 8가지 기준으로 측정합니다."
+        />
+        <div className="flex flex-col items-center justify-center gap-4 py-24">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+            <Icon name="gauge" size={24} className="text-gray-400" />
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-gray-700">발행된 사이트가 없습니다</p>
+            <p className="mt-1 text-sm text-gray-400 [word-break:keep-all]">
+              챗봇으로 사이트를 생성하고 발행하면 AI 친화도 점수를 확인할 수 있습니다.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <TopBar
         title="AI 친화 구조화 수준 검증"
-        subtitle="사이트의 AI 친화도를 8가지 기준으로 측정합니다. 점수가 높을수록 AI가 콘텐츠를 잘 이해하고 인용합니다."
+        subtitle="사이트가 AI에 얼마나 잘 인식되는지 8가지 기준으로 측정합니다."
       >
-        <span className="text-[12.5px] text-gray-400">최근 검사 2025.05.22 14:30</span>
-        <button className={buttonVariants({ hierarchy: "secondary" })}>
-          <Icon name="refresh-cw" size={16} className="text-gray-500" />
+        {lastMeasuredAt && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+            <Icon name="clock" size={13} className="text-gray-300" />
+            최근 측정 {lastMeasuredAt}
+            {snapshot?.from_cache && (
+              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-400">
+                캐시
+              </span>
+            )}
+          </span>
+        )}
+        <Button
+          hierarchy="secondary"
+          size="sm"
+          onClick={handleRefetch}
+          disabled={isFetching}
+          iconLeading={
+            <Icon
+              name="refresh-cw"
+              size={15}
+              className={cn("text-gray-500", isFetching && "animate-spin")}
+            />
+          }
+        >
           다시 검사하기
-        </button>
+        </Button>
       </TopBar>
 
       <div className="flex flex-col gap-6 p-8">
-        {/* Overview */}
-        <Card padding={28}>
-          <div className="grid grid-cols-1 gap-9 md:grid-cols-[0.9fr_1fr_1fr]">
-            {/* 종합 점수 */}
-            <div className="flex flex-col items-center gap-3.5">
-              <h3 className="text-sm font-semibold text-gray-500">종합 AI 친화도 점수</h3>
-              <Ring value={total} size={148} stroke={12} />
-              <Badge color="success" size="lg">우수</Badge>
-            </div>
 
-            {/* AI 친화도 수준 */}
-            <div>
-              <h3 className="mb-3.5 text-sm font-semibold text-gray-500">AI 친화도 수준</h3>
-              <div className="flex flex-col gap-1">
-                {levels.map((l) => {
-                  const on = total >= l.min && total <= l.max;
-                  return (
-                    <div
-                      key={l.range}
-                      className={cn(
-                        "flex items-center gap-3 rounded-md border px-3 py-2",
-                        on ? "border-primary-100 bg-primary-50" : "border-transparent",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "min-w-16 font-mono text-[12.5px]",
-                          on ? "font-bold text-primary-700" : "text-gray-400",
-                        )}
-                      >
-                        {l.range}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[13.5px]",
-                          on ? "font-semibold text-primary-700" : "text-gray-500",
-                        )}
-                      >
-                        {l.label}
-                      </span>
-                      {on && (
-                        <Icon name="chevron-left" size={16} className="ml-auto text-primary-600" />
-                      )}
-                    </div>
-                  );
-                })}
+        {/* ── Hero: 종합 점수 ─────────────────────────────────────────────── */}
+        <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+          <h3 className="mb-4 text-sm font-semibold text-gray-400">
+            AI 친화 구조화 종합점수
+          </h3>
+          {snapError ? (
+            <div className="flex items-center gap-2.5 rounded-lg bg-error-900/20 px-3 py-3">
+              <Icon name="circle-x" size={14} className="flex-none text-error-400" />
+              <p className="text-xs text-error-300 [word-break:keep-all]">
+                측정 데이터를 불러오지 못했습니다. 다시 검사해 주세요.
+              </p>
+            </div>
+          ) : snapLoading || !siteResolved ? (
+            <div className="flex items-end gap-8">
+              <div className="h-24 w-24 animate-pulse rounded-full bg-gray-700" />
+              <div className="flex flex-col gap-3">
+                <div className="h-14 w-32 animate-pulse rounded bg-gray-700" />
+                <div className="h-4 w-20 animate-pulse rounded bg-gray-700" />
               </div>
             </div>
-
-            {/* 주요 개선 요약 */}
-            <div>
-              <h3 className="mb-3.5 text-sm font-semibold text-gray-500">주요 개선 요약</h3>
-              <ul className="flex flex-col gap-2.5">
-                {summaryItems.map((it, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2 text-[13.5px] text-gray-700 [word-break:keep-all]"
+          ) : total !== null ? (
+            <div className="flex flex-wrap items-center gap-8">
+              <Ring value={total} size={96} stroke={10} />
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-display text-[52px] font-bold leading-none tracking-[-0.02em] text-white">
+                    {total}
+                  </span>
+                  <span className="text-xl text-gray-600">/100</span>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                      totalStatus === "good"
+                        ? "bg-primary-500/20 text-primary-300"
+                        : totalStatus === "warn"
+                          ? "bg-warning-500/20 text-warning-300"
+                          : "bg-error-500/20 text-error-300",
+                    )}
                   >
-                    <span className="mt-px flex-none">
-                      <Icon
-                        name={it.warn ? "triangle-alert" : "circle-check-big"}
-                        size={16}
-                        className={it.warn ? "text-warning-500" : "text-success-600"}
-                      />
-                    </span>
-                    {it.t}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </Card>
+                    {totalLabel}
+                  </span>
+                  <span className="text-[10px] text-gray-600">
+                    {isFromReport ? "리포트 에이전트 주간 측정" : "실시간 측정 (리포트 대기 중)"}
+                  </span>
+                </div>
+              </div>
 
-        {/* 8가지 평가 기준 */}
-        <div>
-          <h2 className="mb-4 font-display text-lg font-bold text-gray-900">8가지 평가 기준</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {criteria.map((c) => (
-              <Card key={c.name} padding={20}>
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-gray-50">
-                      <Icon name={c.icon} size={17} className="text-gray-500" />
-                    </span>
-                    <span className="text-sm font-semibold text-gray-700 [word-break:keep-all]">
-                      {c.name}
+              {/* score history bar mini */}
+              {scoreHistory && scoreHistory.score_history.length > 1 && (() => {
+                const trend = scoreHistory.score_history.slice(-7);
+                const maxS = Math.max(...trend.map((p) => p.score), 1);
+                return (
+                  <div className="ml-auto flex flex-col items-end gap-1">
+                    <span className="text-[10px] text-gray-500">AI 가시성 점수 추이</span>
+                    <div className="flex h-8 items-end gap-1.5">
+                      {trend.map((p, i) => (
+                        <div
+                          key={i}
+                          className="w-4 flex-none rounded-t-[2px] bg-primary-500/40"
+                          style={{ height: `${Math.round((p.score / maxS) * 100)}%` }}
+                          title={`${p.date}: ${p.score}점`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-gray-600">
+                      리포트 에이전트 weekly 측정
                     </span>
                   </div>
-                  <span className="flex-none font-display text-[19px] font-bold text-gray-900">
-                    {c.score}
-                    <span className="text-[13px] font-semibold text-gray-400">/100</span>
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                  <div
-                    className={cn("h-full rounded-full transition-all", statusBar[c.status])}
-                    style={{ width: `${c.score}%` }}
-                  />
-                </div>
-                <div className="mt-1.5 flex justify-between">
-                  <span className="text-[10.5px] text-gray-400">0</span>
-                  <span className={cn("text-[11px] font-semibold", statusFg[c.status])}>
-                    {statusText[c.status]}
-                  </span>
-                  <span className="text-[10.5px] text-gray-400">100</span>
-                </div>
-              </Card>
-            ))}
+                );
+              })()}
+            </div>
+          ) : null}
+        </div>
+
+        {/* ── 8가지 평가 기준 ─────────────────────────────────────────────── */}
+        <div>
+          <h2 className="mb-4 font-display text-lg font-bold text-gray-900">
+            8가지 평가 기준
+          </h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {snapLoading || !siteResolved
+              ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
+              : snapError
+                ? (
+                  <div className="col-span-full flex items-center gap-3 rounded-xl border border-error-200 bg-error-50 px-4 py-4">
+                    <Icon name="triangle-alert" size={16} className="flex-none text-error-500" />
+                    <p className="text-sm text-error-700 [word-break:keep-all]">
+                      측정 데이터를 불러오지 못했습니다. 다시 검사 버튼을 눌러주세요.
+                    </p>
+                  </div>
+                )
+                : criteria
+                  ? criteria.map((c) => <CriterionCard key={c.name} c={c} />)
+                  : null}
           </div>
         </div>
 
-        {/* 개선 제안 */}
-        <Card padding={28}>
-          <h2 className="mb-1.5 font-display text-lg font-bold text-gray-900">개선 제안</h2>
-          <p className="mb-5 text-sm text-gray-500">
-            AI 친화도를 높이기 위해 다음 항목을 반영하는 것이 좋겠습니다.
-          </p>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {improvements.map((it) => (
-              <div key={it.n} className="rounded-xl border border-gray-200 p-[18px]">
-                <div className="mb-2.5 flex items-center gap-2.5">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-[12.5px] font-bold text-primary-700">
-                    {it.n}
-                  </span>
-                  <span className="text-[14.5px] font-semibold text-gray-900">{it.title}</span>
-                </div>
-                <p className="mb-4 min-h-[62px] text-[13px] leading-[1.6] text-gray-500 [word-break:keep-all]">
-                  {it.desc}
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-primary-600">{it.impact}</span>
-                  <button className="rounded-md border border-primary-200 bg-white px-3 py-1.5 text-[12.5px] font-semibold text-primary-700 transition-colors hover:bg-primary-50">
-                    {it.action}
-                  </button>
-                </div>
+        {/* ── 개선 제안 ────────────────────────────────────────────────────── */}
+        {(snapLoading || actionItems.length > 0) && (
+          <Card padding={28}>
+            <h2 className="mb-1.5 font-display text-lg font-bold text-gray-900">
+              개선 제안
+            </h2>
+            <p className="mb-5 text-sm text-gray-500 [word-break:keep-all]">
+              {scoreHistory?.action_items.length
+                ? "Claude Haiku 주간 분석 기반 개선 항목입니다."
+                : "현재 측정 결과 기반 개선 항목입니다."}
+            </p>
+            {snapLoading ? (
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="h-6 w-8 animate-pulse rounded-full bg-gray-100" />
+                    <div className="h-4 flex-1 animate-pulse rounded bg-gray-100" />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {actionItems.slice(0, 5).map((item, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <span
+                      className={cn(
+                        "inline-flex h-[22px] min-w-[28px] flex-none items-center justify-center rounded-full text-[10px] font-semibold",
+                        levelStyle[item.level],
+                      )}
+                    >
+                      {levelLabel[item.level]}
+                    </span>
+                    <span className="flex-1 text-sm leading-snug text-gray-700 [word-break:keep-all]">
+                      {item.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
-        {/* 하단 요약 바 */}
-        <Card padding={28}>
-          <div className="grid grid-cols-1 gap-7 md:grid-cols-3">
-            <div>
-              <SummaryHead icon="award" title="전체 요약" />
-              <p className="text-sm leading-[1.6] text-gray-500 [word-break:keep-all]">
-                현재 AI 친화도 점수는 <b className="text-gray-900">{total}점</b>으로 우수
-                수준입니다. 위의 개선 항목을 반영하면 90점 이상 달성이 가능합니다.
-              </p>
+        {/* ── 하단 요약 ────────────────────────────────────────────────────── */}
+        {!snapLoading && !snapError && snapshot && total !== null && (
+          <Card padding={28}>
+            <div className="grid grid-cols-1 gap-7 md:grid-cols-3">
+              <div>
+                <div className="mb-2.5 flex items-center gap-2">
+                  <Icon name="award" size={15} className="text-primary-600" />
+                  <span className="text-[13.5px] font-semibold text-gray-500">전체 요약</span>
+                </div>
+                <p className="text-sm leading-[1.6] text-gray-500 [word-break:keep-all]">
+                  현재 AI 친화도 점수는{" "}
+                  <b className="text-gray-900">{total}점</b>으로{" "}
+                  {totalLabel} 수준입니다.{" "}
+                  {total < 80 && "위의 개선 항목을 반영하면 점수를 높일 수 있습니다."}
+                  {total >= 80 && "우수한 AI 친화 구조를 갖추고 있습니다."}
+                </p>
+              </div>
+              <div className="md:border-x md:border-gray-200 md:px-7">
+                <div className="mb-2.5 flex items-center gap-2">
+                  <Icon name="trending-up" size={15} className="text-primary-600" />
+                  <span className="text-[13.5px] font-semibold text-gray-500">측정 현황</span>
+                </div>
+                <div className="mb-2 text-sm text-gray-700">
+                  {criteria?.filter((c) => c.status === "good").length ?? 0}개 양호 ·{" "}
+                  {criteria?.filter((c) => c.status === "warn").length ?? 0}개 보통 ·{" "}
+                  {criteria?.filter((c) => c.status === "bad").length ?? 0}개 부족
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-primary-500"
+                    style={{ width: `${total}%` }}
+                  />
+                </div>
+                <div className="mt-1.5 text-xs text-gray-400">{total} / 100</div>
+              </div>
+              <div>
+                <div className="mb-2.5 flex items-center gap-2">
+                  <Icon name="calendar" size={15} className="text-primary-600" />
+                  <span className="text-[13.5px] font-semibold text-gray-500">다음 측정</span>
+                </div>
+                <div className="mb-3 text-[15px] font-semibold text-gray-900">
+                  7일 후{" "}
+                  <span className="text-[13px] font-normal text-gray-400">
+                    (리포트 에이전트 주기)
+                  </span>
+                </div>
+                <Button
+                  hierarchy="secondary"
+                  size="sm"
+                  onClick={handleRefetch}
+                  disabled={isFetching}
+                >
+                  지금 재측정
+                </Button>
+              </div>
             </div>
-            <div className="md:border-x md:border-gray-200 md:px-7">
-              <SummaryHead icon="trending-up" title="예상 개선 점수" />
-              <div className="mb-2.5 text-sm text-gray-700">
-                +{Math.min(100 - total, 28)}점 상승 가능
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                <div
-                  className="h-full rounded-full bg-primary-500"
-                  style={{ width: `${total}%` }}
-                />
-              </div>
-              <div className="mt-1.5 text-xs text-gray-400">
-                {total} → {Math.min(total + 28, 100)}
-              </div>
-            </div>
-            <div>
-              <SummaryHead icon="calendar" title="다음 검사 예정" />
-              <div className="mb-3 text-[15px] font-semibold text-gray-900">
-                2025.05.29 <span className="text-[13px] font-normal text-gray-400">(7일 후)</span>
-              </div>
-              <button className="rounded-md border border-gray-300 bg-white px-3 py-[7px] text-[12.5px] font-semibold text-gray-600 transition-colors hover:bg-gray-50">
-                검사 일정 변경
-              </button>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        )}
       </div>
     </>
   );
