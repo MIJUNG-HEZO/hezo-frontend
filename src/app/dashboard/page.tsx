@@ -145,6 +145,7 @@ export default function DashboardPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishingSiteId, setPublishingSiteId] = useState<string | null>(null);
   const [activePublishedAt, setActivePublishedAt] = useState<string | null>(null);
+  const [activeDomainUrl, setActiveDomainUrl] = useState<string | null>(null);
   const searchParams = useSearchParams();
 
   const loadSites = useCallback(() => {
@@ -156,6 +157,7 @@ export default function DashboardPage() {
         const active = published.find((s) => s.id === saved) ?? published[0] ?? null;
         setActiveSiteId(active?.id ?? null);
         setActivePublishedAt(active?.published_at ?? null);
+        setActiveDomainUrl(active?.domain_url ?? null);
       })
       .catch(() => setHasSite(false));
   }, []);
@@ -349,6 +351,29 @@ export default function DashboardPage() {
 
       {siteCreationError && (
         <ErrorBanner message={siteCreationError} onDismiss={() => setSiteCreationError(null)} />
+      )}
+
+      {activeDomainUrl && (
+        <div className="border-b border-gray-100 bg-success-50 px-8 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="h-2 w-2 flex-none rounded-full bg-success-500" />
+              <span className="text-xs font-medium text-success-800">내 홈페이지가 발행됐습니다</span>
+              <span className="hidden truncate text-xs text-success-600 sm:block">
+                {activeDomainUrl.startsWith("http") ? activeDomainUrl : `https://${activeDomainUrl}`}
+              </span>
+            </div>
+            <a
+              href={activeDomainUrl.startsWith("http") ? activeDomainUrl : `https://${activeDomainUrl}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex flex-none items-center gap-1.5 rounded-lg bg-success-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-success-500"
+            >
+              <Icon name="external-link" size={13} />
+              홈페이지 열기
+            </a>
+          </div>
+        </div>
       )}
 
       <div className="flex flex-col gap-6 p-8">

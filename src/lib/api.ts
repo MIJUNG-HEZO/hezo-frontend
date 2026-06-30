@@ -109,6 +109,7 @@ export interface SiteSummary {
   status: string;
   is_published: boolean;
   published_at: string | null;
+  domain_url?: string | null;
 }
 
 /** POST /api/v1/sites — 새 사이트 생성 */
