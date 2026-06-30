@@ -133,24 +133,38 @@ export default function AdminPage() {
           </Card>
         </div>
 
-        {/* Studio 인프라 모니터링 — Grafana iframe */}
+        {/* Studio 인프라 모니터링 — Grafana 링크 */}
         {grafanaUrl && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-700">Studio 인프라 모니터링</h2>
-              <span className="text-xs text-gray-400">ECS Fargate + RDS · Prometheus + Loki + Tempo</span>
+          <Card>
+            <h3 className="mb-4 text-sm font-semibold text-gray-500">Grafana — Studio 인프라 모니터링</h3>
+            <div className="flex h-[200px] flex-col items-center justify-center gap-4 rounded-md border border-dashed border-gray-200">
+              <p className="text-sm text-gray-500">ECS Fargate + RDS · Prometheus + Loki + Tempo</p>
+              <div className="flex gap-3">
+                <a
+                  href={`${grafanaUrl}/d/studio-infra`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
+                >
+                  Studio 대시보드 열기
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 2h10v10M12 2 2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                </a>
+                <a
+                  href={`${grafanaUrl}/d/customer-infra`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                  고객사 대시보드 열기
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 2h10v10M12 2 2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                </a>
+              </div>
             </div>
-            <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-              <iframe
-                src={`${grafanaUrl}/d/studio-infra?kiosk=tv&theme=light&from=now-1h&to=now`}
-                width="100%"
-                height="700"
-                frameBorder="0"
-                title="Studio 인프라 모니터링"
-                className="block"
-              />
-            </div>
-          </div>
+          </Card>
         )}
       </div>
     </>
