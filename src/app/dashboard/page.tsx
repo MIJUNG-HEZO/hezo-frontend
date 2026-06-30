@@ -16,6 +16,7 @@ import {
   getScoreHistory,
   getCitationHistory,
   getPipelineStatus,
+  getInfraMetrics,
 } from "@/lib/api";
 import { getPublishingState, clearPublishingState } from "@/lib/publishing-store";
 import PublishingDashboard from "@/components/dashboard/PublishingDashboard";
@@ -280,6 +281,14 @@ export default function DashboardPage() {
     queryFn: () => getCitationHistory(activeSiteId!),
     enabled: !!activeSiteId,
     staleTime: 1000 * 60 * 60 * 6,
+  });
+
+  const { data: infraMetrics } = useQuery({
+    queryKey: ["infra-metrics", activeSiteId],
+    queryFn: () => getInfraMetrics(activeSiteId!),
+    enabled: !!activeSiteId,
+    staleTime: 1000 * 30,
+    refetchInterval: 1000 * 60,
   });
 
   // ── Early returns ────────────────────────────────────────────────────────────
@@ -827,6 +836,59 @@ export default function DashboardPage() {
             )}
           </Card>
         </div>
+
+        {/* ── 인프라 모니터링 ──────────────────────────────────────────────── */}
+        {infraMetrics?.available && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold text-gray-500">인프라 모니터링</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                {
+                  label: "CPU",
+                  value: infraMetrics.cpu_percent,
+                  unit: "%",
+                  warn: 80,
+                  danger: 90,
+                },
+                {
+                  label: "메모리",
+                  value: infraMetrics.memory_percent,
+                  unit: "%",
+                  warn: 80,
+                  danger: 90,
+                },
+                {
+                  label: "디스크",
+                  value: infraMetrics.disk_percent,
+                  unit: "%",
+                  warn: 70,
+                  danger: 85,
+                },
+                {
+                  label: "네트워크 수신",
+                  value: infraMetrics.net_rx_kbps,
+                  unit: " kbps",
+                  warn: Infinity,
+                  danger: Infinity,
+                },
+              ].map(({ label, value, unit, warn, danger }) => {
+                const color =
+                  value === null ? "text-gray-400"
+                  : value >= danger ? "text-error-600"
+                  : value >= warn ? "text-warning-600"
+                  : "text-success-700";
+                return (
+                  <Card key={label} className="flex flex-col gap-1 py-4">
+                    <span className="text-xs text-gray-400">{label}</span>
+                    <span className={`text-2xl font-bold tabular-nums ${color}`}>
+                      {value !== null ? `${value}${unit}` : "—"}
+                    </span>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
