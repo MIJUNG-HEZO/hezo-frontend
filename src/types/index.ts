@@ -273,3 +273,12 @@ export interface CitationHistory {
   latest: LlmCitationRates | null;
   query_count: number;
 }
+
+export interface InfraMetrics {
+  cpu_percent: number | null;
+  memory_percent: number | null;
+  disk_percent: number | null;
+  net_rx_kbps: number | null;
+  net_tx_kbps: number | null;
+  available: boolean;
+}

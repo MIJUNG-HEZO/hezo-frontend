@@ -9,6 +9,7 @@ import type {
   MonitoringHistory,
   ScoreHistory,
   CitationHistory,
+  InfraMetrics,
 } from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -376,4 +377,9 @@ export async function getScoreHistory(siteId: string): Promise<ScoreHistory> {
 /** GET /api/v1/sites/{siteId}/monitoring/citation-history — LLM별 주간 인용률 (최대 90일) */
 export async function getCitationHistory(siteId: string): Promise<CitationHistory> {
   return api.get(`api/v1/sites/${siteId}/monitoring/citation-history`).json<CitationHistory>();
+}
+
+/** GET /api/v1/sites/{siteId}/monitoring/infra — 고객사 EC2 인프라 메트릭 (node_exporter) */
+export async function getInfraMetrics(siteId: string): Promise<InfraMetrics> {
+  return api.get(`api/v1/sites/${siteId}/monitoring/infra`).json<InfraMetrics>();
 }
