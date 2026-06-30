@@ -55,6 +55,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
 
   const cwUrl = process.env.NEXT_PUBLIC_CW_DASHBOARD_URL;
+  const grafanaUrl = process.env.NEXT_PUBLIC_GRAFANA_URL;
 
   useEffect(() => {
     const fetchPipeline = () =>
@@ -131,6 +132,26 @@ export default function AdminPage() {
             </div>
           </Card>
         </div>
+
+        {/* Studio 인프라 모니터링 — Grafana iframe */}
+        {grafanaUrl && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-700">Studio 인프라 모니터링</h2>
+              <span className="text-xs text-gray-400">ECS Fargate + RDS · Prometheus + Loki + Tempo</span>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+              <iframe
+                src={`${grafanaUrl}/d/studio-infra?kiosk=tv&theme=light&from=now-1h&to=now`}
+                width="100%"
+                height="700"
+                frameBorder="0"
+                title="Studio 인프라 모니터링"
+                className="block"
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
