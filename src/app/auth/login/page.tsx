@@ -65,7 +65,13 @@ export default function LoginPage() {
         localStorage.setItem("access_token", res.access_token);
         try {
           const me = await getCurrentUser();
-          router.push(me.role === "admin" ? "/admin" : "/dashboard");
+          if (me.role === "admin") {
+            localStorage.setItem("admin_token", res.access_token);
+            document.cookie = `admin_token=${res.access_token}; path=/; max-age=86400; SameSite=Lax`;
+            router.push("/admin");
+          } else {
+            router.push("/dashboard");
+          }
         } catch {
           router.push("/dashboard");
         }
