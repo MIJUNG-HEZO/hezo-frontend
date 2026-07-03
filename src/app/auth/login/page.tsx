@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { api, getCurrentUser } from "@/lib/api";
+import { api, getApiErrorMessage, getCurrentUser } from "@/lib/api";
 import { startOAuthLogin } from "@/lib/oauth";
 import { Logo } from "@/components/landing/Logo";
 import { Input } from "@/components/ui/Input";
@@ -77,12 +77,7 @@ export default function LoginPage() {
         }
       }
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
-        try {
-          const body = await (err as { response: Response }).response.json();
-          setError((body as { error?: { message?: string }; detail?: string }).error?.message ?? (body as { detail?: string }).detail ?? "요청에 실패했습니다");
-        } catch { setError("서버 연결에 실패했습니다"); }
-      } else { setError("서버 연결에 실패했습니다"); }
+      setError(await getApiErrorMessage(err, "서버 연결에 실패했습니다"));
     } finally { setLoading(false); }
   };
 

@@ -35,17 +35,22 @@ const handle401: BeforeErrorHook = ({ error }) => {
   return error;
 };
 
-/** ky HTTPError에서 백엔드 에러 메시지를 추출 (없으면 fallback). */
+/**
+ * ky HTTPError에서 백엔드 에러 메시지를 추출 (없으면 fallback).
+ *
+ * ky v2부터 HTTPError가 응답 바디를 미리 파싱해 `error.data`에 채우면서
+ * 스트림을 소비한다(`error.response.json()`은 이후 호출 시 실패). 그래서
+ * `error.response.json()`이 아니라 `error.data`를 읽어야 한다.
+ */
 export async function getApiErrorMessage(
   err: unknown,
   fallback = "요청에 실패했습니다",
 ): Promise<string> {
-  if (err && typeof err === "object" && "response" in err) {
-    try {
-      const body = await (err as { response: Response }).response.json();
-      return body?.error?.message ?? body?.message ?? body?.detail ?? fallback;
-    } catch {
-      return fallback;
+  if (err && typeof err === "object" && "data" in err) {
+    const data = (err as { data?: unknown }).data;
+    if (data && typeof data === "object") {
+      const body = data as { error?: { message?: string }; message?: string; detail?: string };
+      return body.error?.message ?? body.message ?? body.detail ?? fallback;
     }
   }
   return fallback;
