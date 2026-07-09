@@ -8,7 +8,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
-import { createSite, triggerPreview } from "@/lib/api";
+import { createSiteAndAwaitReady, SiteCreationTimeoutError, triggerPreview } from "@/lib/api";
 
 type Phase = "start" | "structure" | "template" | "conversation";
 
@@ -64,6 +64,8 @@ export default function ChatPage() {
   const [rightTab, setRightTab] = useState<"preview" | "schema">("preview");
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
   const [redirectingToPreview, setRedirectingToPreview] = useState(false);
+  const [creatingSite, setCreatingSite] = useState(false);
+  const [siteCreationError, setSiteCreationError] = useState<string | null>(null);
 
   const { sessionState, sendMessage, requestRegeneration, startNewSession, formatTime } =
     useChatSession();
@@ -76,12 +78,20 @@ export default function ChatPage() {
 
   const handleStartConversation = useCallback(async () => {
     if (!currentSiteId) {
+      setCreatingSite(true);
+      setSiteCreationError(null);
       try {
-        const site = await createSite("새 홈페이지", selectedStructure ?? "landing");
+        const site = await createSiteAndAwaitReady("새 홈페이지", selectedStructure ?? "landing");
         setCurrentSiteId(site.id);
-      } catch {
+      } catch (err) {
+        setCreatingSite(false);
+        if (err instanceof SiteCreationTimeoutError) {
+          setSiteCreationError("사이트 생성이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.");
+          return;
+        }
         setCurrentSiteId(sessionState.sessionId);
       }
+      setCreatingSite(false);
     }
     setPhase("conversation");
   }, [currentSiteId, selectedStructure, sessionState.sessionId]);
@@ -329,11 +339,23 @@ export default function ChatPage() {
                   </div>
                 ))}
               </div>
+              {siteCreationError && (
+                <div className="mb-3 flex items-center gap-2.5 rounded-xl border border-error-200 bg-error-50 px-3.5 py-2.5">
+                  <Icon name="triangle-alert" size={14} className="flex-none text-error-500" />
+                  <p className="text-xs text-error-700">{siteCreationError}</p>
+                </div>
+              )}
               <div className="flex gap-3">
                 <Button hierarchy="secondary" size="lg" onClick={() => setPhase("structure")}>← 구조 다시 선택</Button>
                 {selectedTemplate && (
-                  <Button hierarchy="primary" size="lg" onClick={handleStartConversation} className="flex-1">
-                    다음: 대화 시작하기 →
+                  <Button
+                    hierarchy="primary"
+                    size="lg"
+                    onClick={handleStartConversation}
+                    disabled={creatingSite}
+                    className="flex-1"
+                  >
+                    {creatingSite ? "사이트 준비 중..." : "다음: 대화 시작하기 →"}
                   </Button>
                 )}
               </div>
