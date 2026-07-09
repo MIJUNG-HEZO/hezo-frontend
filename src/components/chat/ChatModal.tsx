@@ -8,7 +8,8 @@ import {
   publishSite,
   sendChatMessage,
   triggerPreview,
-  createSite,
+  createSiteAndAwaitReady,
+  SiteCreationTimeoutError,
 } from "@/lib/api";
 import { setPublishingState } from "@/lib/publishing-store";
 import PricingModal from "@/components/chat/PricingModal";
@@ -215,7 +216,7 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
     try {
       let id = siteId || propSiteId;
       if (!id) {
-        const newSite = await createSite(selectedTemplate, selectedStructure);
+        const newSite = await createSiteAndAwaitReady(selectedTemplate, selectedStructure);
         id = newSite.id;
         setSiteId(id);
       }
@@ -224,7 +225,14 @@ export default function ChatModal({ isOpen, onClose, siteId: propSiteId }: ChatM
           json: { structure: selectedStructure, template_id: selectedTemplate },
         });
       }
-    } catch { /* 백엔드 없어도 진행 */ }
+    } catch (err) {
+      if (err instanceof SiteCreationTimeoutError) {
+        setLoading(false);
+        setError("사이트 생성이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      /* 그 외 에러는 백엔드 없어도 진행 */
+    }
     finally { setLoading(false); }
     setPhase("conversation");
   };

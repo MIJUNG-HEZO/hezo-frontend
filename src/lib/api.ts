@@ -117,9 +117,53 @@ export interface SiteSummary {
   domain_url?: string | null;
 }
 
-/** POST /api/v1/sites — 새 사이트 생성 */
-export async function createSite(name: string, siteType = "landing"): Promise<SiteSummary> {
-  return api.post("api/v1/sites", { json: { name, site_type: siteType } }).json<SiteSummary>();
+export interface SiteQueuedResponse {
+  id: string;
+  status: "queued";
+}
+
+export type SiteCreateResult = SiteSummary | SiteQueuedResponse;
+
+/** POST /sites의 큐잉 상태가 30초 내에 완료로 바뀌지 않을 때 던진다. */
+export class SiteCreationTimeoutError extends Error {
+  constructor(public readonly siteId: string) {
+    super("사이트 생성이 지연되고 있습니다");
+    this.name = "SiteCreationTimeoutError";
+  }
+}
+
+/** POST /api/v1/sites — 새 사이트 생성. SQS 발행 성공 시 202(queued), 폴백 시 201(완료)로 응답. */
+export async function createSite(name: string, siteType = "landing"): Promise<SiteCreateResult> {
+  return api.post("api/v1/sites", { json: { name, site_type: siteType } }).json<SiteCreateResult>();
+}
+
+/** GET /api/v1/sites/{id} — 큐잉 상태 폴링용(Aurora에 없으면 DynamoDB 큐 상태 폴백) */
+export async function getSite(siteId: string): Promise<SiteCreateResult> {
+  return api.get(`api/v1/sites/${siteId}`).json<SiteCreateResult>();
+}
+
+const SITE_POLL_INTERVAL_MS = 2000;
+const SITE_POLL_TIMEOUT_MS = 30000;
+
+/**
+ * createSite() 호출 후 응답이 "queued"면 Aurora에 실제로 반영될 때까지
+ * GET /sites/{id}를 폴링한다. 완료되면 SiteSummary를 반환하고,
+ * SITE_POLL_TIMEOUT_MS를 넘기면 SiteCreationTimeoutError를 던진다.
+ */
+export async function createSiteAndAwaitReady(
+  name: string,
+  siteType = "landing",
+): Promise<SiteSummary> {
+  const initial = await createSite(name, siteType);
+  if (initial.status !== "queued") return initial as SiteSummary;
+
+  const deadline = Date.now() + SITE_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, SITE_POLL_INTERVAL_MS));
+    const current = await getSite(initial.id);
+    if (current.status !== "queued") return current as SiteSummary;
+  }
+  throw new SiteCreationTimeoutError(initial.id);
 }
 
 /** GET /api/v1/sites — 백엔드는 { items, total } 형태로 응답한다. */
